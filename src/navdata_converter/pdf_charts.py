@@ -33,12 +33,12 @@ _DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA)\b(?:\s+(?P<fix>[A-Z][A-Z
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _DMS_COORDINATE = re.compile(
     r"N\s*(?P<lat_deg>\d{2})\D+?(?P<lat_min>\d{2})\D+?(?P<lat_sec>\d{2}(?:\.\d+)?)[\"']?\s*"
-    r"E\s*(?P<lon_deg>\d{3})\D+?(?P<lon_min>\d{2})\D+?(?P<lon_sec>\d{2}(?:\.\d+)?)[\"']?",
+    r"E\s*(?P<lon_deg>\d{2,3})\D+?(?P<lon_min>\d{2})\D+?(?P<lon_sec>\d{2}(?:\.\d+)?)[\"']?",
     re.IGNORECASE,
 )
 _DM_COORDINATE = re.compile(
     r"N\s*(?P<lat_deg>\d{2})\D+?(?P<lat_min>\d{2}(?:\.\d+)?)[\"']\s*"
-    r"E\s*(?P<lon_deg>\d{3})\D+?(?P<lon_min>\d{2}(?:\.\d+)?)[\"']",
+    r"E\s*(?P<lon_deg>\d{2,3})\D+?(?P<lon_min>\d{2}(?:\.\d+)?)[\"']",
     re.IGNORECASE,
 )
 
@@ -102,29 +102,31 @@ def extract_positioned_coordinate_page_points(words: list[tuple[float, float, fl
     identifier to its left on the same rendered line instead of trusting text
     extraction order.
     """
-    lines: dict[int, list[tuple[float, str]]] = {}
-    for x0, y0, _, _, text, *_ in words:
-        lines.setdefault(round(y0), []).append((x0, text))
-    result: list[ChartFixCoordinate] = []
-    for _, line in sorted(lines.items()):
-        tokens = sorted(line)
-        for position, (_, token) in enumerate(tokens):
-            match = _DMS_COORDINATE.search(token) or _DM_COORDINATE.search(token)
-            if not match:
-                continue
-            identifier = next(
-                (candidate for _, candidate in reversed(tokens[:position]) if _COORDINATE_PAGE_IDENT.fullmatch(candidate) and candidate not in _IGNORED),
-                None,
-            )
-            if identifier is None:
-                continue
-            latitude = int(match["lat_deg"]) + float(match["lat_min"]) / 60
-            longitude = int(match["lon_deg"]) + float(match["lon_min"]) / 60
-            if "lat_sec" in match.groupdict() and match["lat_sec"] is not None:
-                latitude += float(match["lat_sec"]) / 3600
-                longitude += float(match["lon_sec"]) / 3600
-            result.append(ChartFixCoordinate(identifier, latitude, longitude, match.group(0)))
-    return tuple(result)
+    identifiers = [
+        (x0, y0, text)
+        for x0, y0, _, _, text, *_ in words
+        if _COORDINATE_PAGE_IDENT.fullmatch(text) and text not in _IGNORED
+    ]
+    result: list[tuple[float, float, ChartFixCoordinate]] = []
+    for coordinate_x, coordinate_y, _, _, token, *_ in words:
+        match = _DMS_COORDINATE.search(token) or _DM_COORDINATE.search(token)
+        if not match:
+            continue
+        candidates = [
+            (identifier_x, identifier_y, identifier)
+            for identifier_x, identifier_y, identifier in identifiers
+            if identifier_x < coordinate_x and abs(identifier_y - coordinate_y) <= 3
+        ]
+        if not candidates:
+            continue
+        _, _, identifier = max(candidates, key=lambda candidate: (candidate[0], -abs(candidate[1] - coordinate_y)))
+        latitude = int(match["lat_deg"]) + float(match["lat_min"]) / 60
+        longitude = int(match["lon_deg"]) + float(match["lon_min"]) / 60
+        if "lat_sec" in match.groupdict() and match["lat_sec"] is not None:
+            latitude += float(match["lat_sec"]) / 3600
+            longitude += float(match["lon_sec"]) / 3600
+        result.append((coordinate_y, coordinate_x, ChartFixCoordinate(identifier, latitude, longitude, match.group(0))))
+    return tuple(point for _, _, point in sorted(result))
 
 
 def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:

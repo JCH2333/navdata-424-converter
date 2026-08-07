@@ -57,6 +57,22 @@ def test_pairs_coordinate_rows_by_rendered_position_when_pdf_text_order_is_wrong
     ]
 
 
+def test_pairs_three_column_coordinate_table_despite_baseline_offsets():
+    words = [
+        (33.0, 72.3, 50.0, 80.0, "DER16", 0, 0, 0),
+        (156.0, 72.1, 170.0, 80.0, "DQ504", 0, 1, 0),
+        (95.0, 73.8, 145.0, 80.0, 'N27°46\'37.4"E99°41\'03"', 1, 0, 0),
+        (216.0, 73.9, 270.0, 80.0, 'N27°39\'46.3"E99°43\'51"', 1, 1, 0),
+    ]
+
+    points = extract_positioned_coordinate_page_points(words)
+
+    assert [(item.ident, round(item.latitude, 6), round(item.longitude, 6)) for item in points] == [
+        ("DER16", 27.777056, 99.684167),
+        ("DQ504", 27.662861, 99.730833),
+    ]
+
+
 def test_chart_rows_decode_utf8_index(tmp_path):
     index = tmp_path / "Charts.csv"
     index.write_text("ChartName,PAGE_NUMBER\n航路点坐标,4Y01\n", encoding="utf-8")
