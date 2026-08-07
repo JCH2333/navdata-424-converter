@@ -21,7 +21,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 2
+_EVIDENCE_CACHE_VERSION = 3
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -38,6 +38,10 @@ _CHART_COORDINATE = re.compile(
     re.IGNORECASE,
 )
 _DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)?\s*[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()")
+_DATABASE_APPROACH_PROCEDURE = re.compile(
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1|\u590d\u98de)"
+    r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5}))?\b"
+)
 _DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
 _DATABASE_SPEED = re.compile(r"^MAX(?P<speed>\d{2,3})$", re.IGNORECASE)
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
@@ -248,6 +252,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     active_label = ""
     active_runway = ""
     active_kind = ""
+    active_transition = ""
     active_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None]] = []
     pending_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None]] = []
 
@@ -256,7 +261,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         if not active_label:
             return
         result.extend(
-            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw, active_kind, course, altitude, turn, speed)
+            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw, active_kind, course, altitude, turn, speed, active_transition)
             for leg_type, fix_ident, raw, course, altitude, turn, speed in active_rows
         )
         active_rows = []
@@ -264,12 +269,23 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     lines = [raw_line.strip() for raw_line in text.splitlines()]
     for line_number, line in enumerate(lines):
         heading = _DATABASE_PROCEDURE.search(line)
-        if heading:
+        approach_heading = _DATABASE_APPROACH_PROCEDURE.search(line)
+        if heading or approach_heading:
             flush()
-            active_label = heading["label"]
-            active_runway = heading["runway"]
-            active_kind = heading["kind"] or ""
-            active_rows = pending_rows
+            if approach_heading:
+                active_label = f"R{approach_heading['runway']}"
+                active_runway = approach_heading["runway"]
+                active_kind = approach_heading["kind"]
+                active_transition = approach_heading["transition"] or ""
+                # Approach pages can begin with a hold continuation, which is
+                # not attributable to the next approach transition.
+                active_rows = []
+            else:
+                active_label = heading["label"]
+                active_runway = heading["runway"]
+                active_kind = heading["kind"] or ""
+                active_transition = ""
+                active_rows = pending_rows
             pending_rows = []
             continue
         leg = _DATABASE_LEG.match(line)

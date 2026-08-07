@@ -195,6 +195,7 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
             row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number)))
     _load_terminal_coordinate_pages(model, pdf_cache)
     _load_terminal_database_charts(model, pdf_cache)
+    _retain_database_referenced_terminal_waypoints(model)
     _load_terminal_approach_charts(model, pdf_cache)
     _load_terminal_standard_procedure_charts(model, pdf_cache)
     _reject_unparsed_charts(model)
@@ -242,6 +243,25 @@ def _load_terminal_database_charts(model: NavModel, pdf_cache: Path | None = Non
     for airport_directory in sorted(path for path in terminal.iterdir() if path.is_dir()):
         extractor = extract_airport_database_charts
         model.procedure_charts.extend(extractor(airport_directory) if pdf_cache is None else extractor(airport_directory, pdf_cache))
+
+
+def _retain_database_referenced_terminal_waypoints(model: NavModel) -> None:
+    """Keep coordinate-page points only when a database-coded segment uses them.
+
+    A coordinate page is an airport-wide catalogue, not a procedure sequence.
+    Restricting it to explicitly printed legs prevents decorative, runway and
+    unused catalogue labels from consuming Fenix waypoint IDs.
+    """
+    used = {
+        (chart.airport, leg.fix_ident)
+        for chart in model.procedure_charts
+        for leg in chart.terminal_legs
+        if leg.fix_ident
+    }
+    model.terminal_waypoints[:] = [
+        point for point in model.terminal_waypoints
+        if (point.airport, point.ident) in used
+    ]
 
 
 def _load_terminal_approach_charts(model: NavModel, pdf_cache: Path | None = None) -> None:

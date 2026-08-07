@@ -152,6 +152,7 @@ class ChartTerminalLeg:
     altitude_meters: float | None = None
     turn_direction: str | None = None
     speed_limit_knots: int | None = None
+    transition: str = ""
 
 
 @dataclass(frozen=True)

@@ -81,6 +81,24 @@ def test_extracts_database_label_without_chinese_title_spacing():
     assert {item.procedure_kind for item in evidence} == {"离场"}
 
 
+def test_extracts_database_approach_transition_main_and_missed_segments():
+    evidence = extract_terminal_leg_evidence(
+        "TF P464\nRNP1\n"
+        "RWY11 进近过渡 HZ505\nIF\nHZ505\nTF\nHZ507\n"
+        "RWY11 进近\nIF\nHZ507\nTF\nHZ508\n"
+        "RWY11 复飞\nCF\nHZ512\nTF\nHZ513"
+    )
+
+    assert [(item.procedure_label, item.procedure_kind, item.transition, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("R11", "进近过渡", "HZ505", "IF", "HZ505"),
+        ("R11", "进近过渡", "HZ505", "TF", "HZ507"),
+        ("R11", "进近", "", "IF", "HZ507"),
+        ("R11", "进近", "", "TF", "HZ508"),
+        ("R11", "复飞", "", "CF", "HZ512"),
+        ("R11", "复飞", "", "TF", "HZ513"),
+    ]
+
+
 def test_pairs_coordinate_page_columns_only_when_counts_match():
     text = "YK401\nBM\nN40°35'40\"E121°48'14\"\nN39°39.4'E121°44.8'"
 

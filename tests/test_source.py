@@ -1,7 +1,7 @@
-from navdata_converter.model import ChartFixCoordinate, NavModel, ProcedureChart, SourceRef
+from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
 import pytest
 
-from navdata_converter.source import _feet, _load_terminal_coordinate_pages, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
+from navdata_converter.source import _feet, _load_terminal_coordinate_pages, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -105,6 +105,22 @@ def test_terminal_database_charts_are_retained_as_procedure_evidence(monkeypatch
     _load_terminal_database_charts(model)
 
     assert model.procedure_charts == [chart]
+
+
+def test_terminal_coordinate_points_must_be_referenced_by_a_database_leg(tmp_path):
+    source = SourceRef("Terminal/ZYYK/ZYYK-4Y01.pdf", 1, 1, "hash")
+    chart = ProcedureChart(
+        "ZYYK", "ZYYK-4Z01.pdf", 1, "terminal-database-coding", "database", "text", (), (), (),
+        (ChartTerminalLeg("BM-09D", "04", "CF", "USED", "CF USED"),), (), source,
+    )
+    model = NavModel(tmp_path, terminal_waypoints=[
+        TerminalWaypoint("used", "ZYYK", "USED", 40.0, 122.0, source),
+        TerminalWaypoint("catalogue", "ZYYK", "UNUSED", 40.1, 122.1, source),
+    ], procedure_charts=[chart])
+
+    _retain_database_referenced_terminal_waypoints(model)
+
+    assert [point.ident for point in model.terminal_waypoints] == ["USED"]
 
 
 def test_terminal_approach_charts_are_retained_as_index_evidence(monkeypatch, tmp_path):
