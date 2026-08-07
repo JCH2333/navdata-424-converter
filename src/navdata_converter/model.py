@@ -95,7 +95,18 @@ class ProcedureChart:
     text_sha256: str
     procedure_labels: tuple[str, ...]
     waypoints: tuple[str, ...]
+    fix_coordinates: tuple["ChartFixCoordinate", ...]
     source: SourceRef
+
+
+@dataclass(frozen=True)
+class ChartFixCoordinate:
+    """A coordinate observed in a chart text layer, not an inferred procedure leg."""
+
+    ident: str | None
+    latitude: float
+    longitude: float
+    raw: str
 
 
 @dataclass

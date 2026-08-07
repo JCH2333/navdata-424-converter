@@ -14,12 +14,35 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from .model import ProcedureChart, SourceRef
+from .model import ChartFixCoordinate, ProcedureChart, SourceRef
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
 _WAYPOINT = re.compile(r"\b([A-Z][A-Z0-9]{1,5})\b")
 _IGNORED = {"CAAC", "ALL", "RIGHTS", "RESER", "MSA", "RNP", "ILS", "DME", "RWY", "ATC", "N", "E", "S", "W"}
+_CHART_COORDINATE = re.compile(
+    r"\bN\s*(?P<lat_deg>\d{2})\s*(?:[°º]|D)?\s*(?P<lat_min>\d{2}(?:\.\d+)?)\s*(?:['′])?"
+    r"\s*[,/ ]*E\s*(?P<lon_deg>\d{3})\s*(?:[°º]|D)?\s*(?P<lon_min>\d{2}(?:\.\d+)?)\s*(?:['′])?\b",
+    re.IGNORECASE,
+)
+
+
+def extract_fix_coordinates(text: str) -> tuple[ChartFixCoordinate, ...]:
+    """Return only explicitly printed north/east chart coordinates.
+
+    Terminal-chart reading order is not route order, so this function preserves
+    nearby labels as evidence and deliberately makes no leg or procedure claim.
+    """
+    coordinates: list[ChartFixCoordinate] = []
+    for match in _CHART_COORDINATE.finditer(text):
+        labels = [token for token in _WAYPOINT.findall(text[max(0, match.start() - 48):match.start()]) if token not in _IGNORED]
+        coordinates.append(ChartFixCoordinate(
+            ident=labels[-1] if labels else None,
+            latitude=int(match["lat_deg"]) + float(match["lat_min"]) / 60,
+            longitude=int(match["lon_deg"]) + float(match["lon_min"]) / 60,
+            raw=match.group(0),
+        ))
+    return tuple(coordinates)
 
 
 def extract_chart(pdf: Path, airport: str, chart_type: str = "") -> list[ProcedureChart]:
@@ -39,6 +62,7 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "") -> list[Procedu
             text_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
             procedure_labels=labels,
             waypoints=waypoints,
+            fix_coordinates=extract_fix_coordinates(text),
             source=SourceRef(str(pdf), page_number, page_number, file_hash),
         ))
     return result

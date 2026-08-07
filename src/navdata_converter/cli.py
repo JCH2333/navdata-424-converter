@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from .deployment import deploy, restore
@@ -10,6 +11,10 @@ from .source import load_naip
 from .validation import validate_candidate
 from .pdf_charts import extract_airport_charts, extract_chart
 from .reference_diff import compare_databases
+
+
+def _chart_payload(chart: object) -> dict[str, object]:
+    return asdict(chart)
 
 
 def _convert(args: argparse.Namespace) -> int:
@@ -50,10 +55,10 @@ def main(argv: list[str] | None = None) -> int:
     inspection.add_argument("--pdf", required=True)
     inspection.add_argument("--airport", required=True)
     inspection.add_argument("--chart-type", default="")
-    inspection.set_defaults(handler=lambda a: print(json.dumps([item.__dict__ | {"source": item.source.__dict__} for item in extract_chart(Path(a.pdf), a.airport, a.chart_type)], ensure_ascii=False, indent=2)) or 0)
+    inspection.set_defaults(handler=lambda a: print(json.dumps([_chart_payload(item) for item in extract_chart(Path(a.pdf), a.airport, a.chart_type)], ensure_ascii=False, indent=2)) or 0)
     airport_inspection = commands.add_parser("inspect-airport-pdfs")
     airport_inspection.add_argument("--airport-directory", required=True)
-    airport_inspection.set_defaults(handler=lambda a: print(json.dumps([item.__dict__ | {"source": item.source.__dict__} for item in extract_airport_charts(Path(a.airport_directory))], ensure_ascii=False, indent=2)) or 0)
+    airport_inspection.set_defaults(handler=lambda a: print(json.dumps([_chart_payload(item) for item in extract_airport_charts(Path(a.airport_directory))], ensure_ascii=False, indent=2)) or 0)
     difference = commands.add_parser("diff-reference")
     difference.add_argument("--candidate", required=True)
     difference.add_argument("--reference", required=True)
