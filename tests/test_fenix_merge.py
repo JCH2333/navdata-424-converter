@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -85,6 +86,7 @@ def test_projects_complete_ad219_ils_using_observed_fenix_units():
         "category": "1", "ident": "ICF", "localizer_course": 212.0,
         "crossing_height": "50", "elevation_feet": 2021,
     }
+    assert project_ad219_ils(replace(ils, dme_elevation_meters=26.0)).elevation_feet == 86
 
 
 def test_inserts_only_complete_source_backed_ils_rows(tmp_path):

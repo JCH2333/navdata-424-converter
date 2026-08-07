@@ -234,7 +234,7 @@ def project_ad219_ils(ils: Ils) -> FenixIlsProjection:
         ident=ils.ident,
         localizer_course=float(ils.localizer_course_magnetic),
         crossing_height=str(math.ceil(float(ils.crossing_height_meters) * 3.28084)),
-        elevation_feet=round(float(ils.dme_elevation_meters) * 3.28084),
+        elevation_feet=math.ceil(float(ils.dme_elevation_meters) * 3.28084),
     )
 
 
