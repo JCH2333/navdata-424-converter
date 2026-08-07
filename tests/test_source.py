@@ -1,5 +1,5 @@
 from navdata_converter.model import ChartFixCoordinate, NavModel, ProcedureChart, SourceRef
-from navdata_converter.source import _feet, _load_terminal_coordinate_pages, _rows, _surface, navaid_country, parse_dms, romanize_name
+from navdata_converter.source import _feet, _load_terminal_coordinate_pages, _rows, _surface, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -36,6 +36,10 @@ def test_romanize_name_matches_observed_fenix_spelling():
 def test_navaid_country_prefers_serviced_airport_and_falls_back_to_fir():
     assert navaid_country("ZBHZ", "") == "ZB"
     assert navaid_country("", "\u6c88\u9633\u60c5\u62a5\u533a") == "ZY"
+
+
+def test_waypoint_country_uses_naip_fir_prefix():
+    assert waypoint_country("\u5e7f\u5dde\u60c5\u62a5\u533a") == "ZG"
 
 
 def test_nav_model_keeps_rejected_source_records_for_reporting(tmp_path):

@@ -68,6 +68,7 @@ class Waypoint:
     latitude: float
     longitude: float
     source: SourceRef
+    country: str = ""
 
 
 @dataclass(frozen=True)
@@ -84,6 +85,7 @@ class TerminalWaypoint:
     latitude: float
     longitude: float
     source: SourceRef
+    country: str = ""
 
 
 @dataclass(frozen=True)

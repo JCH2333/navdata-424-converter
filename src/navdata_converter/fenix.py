@@ -125,6 +125,78 @@ def _insert_navaids(connection: sqlite3.Connection, navaids: list[Navaid]) -> in
     return len(additions)
 
 
+def _location_key(latitude: float, longitude: float) -> tuple[int, int]:
+    return round(latitude / 0.05), round(longitude / 0.05)
+
+
+class _WaypointLocations:
+    """Spatial index for source-to-official waypoint identity checks."""
+
+    def __init__(self, rows: list[tuple[float, float]]) -> None:
+        self._cells: dict[tuple[int, int], list[tuple[float, float]]] = {}
+        for latitude, longitude in rows:
+            self.add(latitude, longitude)
+
+    def add(self, latitude: float, longitude: float) -> None:
+        self._cells.setdefault(_location_key(latitude, longitude), []).append((latitude, longitude))
+
+    def contains(self, latitude: float, longitude: float) -> bool:
+        cell_latitude, cell_longitude = _location_key(latitude, longitude)
+        return any(
+            _distance_nm(latitude, longitude, candidate_latitude, candidate_longitude) < 0.02
+            for latitude_offset in range(-1, 2)
+            for longitude_offset in range(-1, 2)
+            for candidate_latitude, candidate_longitude in self._cells.get((cell_latitude + latitude_offset, cell_longitude + longitude_offset), [])
+        )
+
+
+def _insert_waypoint(connection: sqlite3.Connection, waypoint_id: int, ident: str, name: str, latitude: float, longitude: float, country: str, navaid_id: int | None = None) -> None:
+    connection.execute("INSERT INTO Waypoints VALUES (?,?,?,?,?,?,?)", (waypoint_id, ident, int(navaid_id is not None), name, latitude, longitude, navaid_id))
+    connection.execute("INSERT INTO WaypointLookup VALUES (?,?,?)", (ident, country, waypoint_id))
+
+
+def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_additions: list[Navaid] | None = None) -> dict[str, int]:
+    """Append source waypoint phases without consuming finished-reference rows.
+
+    Terminal and designated records intentionally use independent base checks:
+    the reference keeps some collocated records from both source phases.
+    """
+    official_rows = list(connection.execute("SELECT Latitude, Longtitude FROM Waypoints"))
+    terminal_locations = _WaypointLocations(official_rows)
+    designated_locations = _WaypointLocations(official_rows)
+    next_waypoint_id = _next_id(connection, "Waypoints")
+    terminal_count = 0
+    for point in model.terminal_waypoints:
+        if terminal_locations.contains(point.latitude, point.longitude):
+            continue
+        _insert_waypoint(connection, next_waypoint_id, point.ident, point.ident, point.latitude, point.longitude, point.country)
+        terminal_locations.add(point.latitude, point.longitude)
+        next_waypoint_id += 1
+        terminal_count += 1
+    designated_count = 0
+    for point in model.waypoints:
+        if designated_locations.contains(point.latitude, point.longitude):
+            continue
+        name = point.name if point.name.isascii() else romanize_name(point.name)
+        _insert_waypoint(connection, next_waypoint_id, point.ident, name, point.latitude, point.longitude, point.country)
+        designated_locations.add(point.latitude, point.longitude)
+        next_waypoint_id += 1
+        designated_count += 1
+    navaid_count = 0
+    for navaid in navaid_additions or []:
+        row = connection.execute(
+            "SELECT ID FROM Navaids WHERE Ident=? AND Latitude=? AND Longtitude=? ORDER BY ID DESC LIMIT 1",
+            (navaid.ident, navaid.latitude, navaid.longitude),
+        ).fetchone()
+        if row is None:
+            raise ConversionBlocked(f"missing inserted navaid for collocated waypoint: {navaid.ident}")
+        name = navaid.name if navaid.name.isascii() else romanize_name(navaid.name)
+        _insert_waypoint(connection, next_waypoint_id, navaid.ident, name, navaid.latitude, navaid.longitude, navaid.country, int(row[0]))
+        next_waypoint_id += 1
+        navaid_count += 1
+    return {"terminal_waypoints_inserted": terminal_count, "designated_waypoints_inserted": designated_count, "navaid_waypoints_inserted": navaid_count}
+
+
 def _copy_navdata(official: Path, output: Path) -> Path:
     if output.exists():
         raise FileExistsError(f"输出目录已经存在: {output}")
@@ -166,8 +238,12 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
             runway.true_heading, runway.length_ft, runway.width_ft, runway.surface, threshold_latitude, threshold_longitude, runway.elevation_ft))
         next_runway += 1
         runways += 1
+    navaid_additions = missing_navaids(connection, model.navaids)
     navaids = _insert_navaids(connection, model.navaids)
-    return {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways, "navaids_inserted": navaids}
+    counts = {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways, "navaids_inserted": navaids}
+    if model.terminal_waypoints or model.waypoints or model.navaids:
+        counts.update(_insert_waypoints(connection, model, navaid_additions))
+    return counts
 
 
 def convert(official_navdata: Path, model: NavModel, output: Path, reference: Path | None = None, *, allow_incomplete: bool = False) -> dict[str, object]:

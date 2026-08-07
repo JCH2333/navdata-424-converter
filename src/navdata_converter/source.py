@@ -103,6 +103,13 @@ def navaid_country(serviced_airport: str, fir: str) -> str:
         raise ValueError(f"unmapped navaid FIR: {fir!r}") from error
 
 
+def waypoint_country(fir: str) -> str:
+    """Map the structured designated-point FIR code to a Fenix country key."""
+    if "\u9999\u6e2f" in (fir or ""):
+        return "VH"
+    return navaid_country("", fir)
+
+
 def load_naip(root: Path) -> NavModel:
     """Load only structured data; PDFs are inspected separately and never guessed."""
     root = root.resolve()
@@ -149,9 +156,12 @@ def load_naip(root: Path) -> NavModel:
     for row_number, row in enumerate(_rows(root / "DESIGNATED_POINT.csv"), start=2):
         try:
             model.waypoints.append(Waypoint(row["SIGNIFICANT_POINT_ID"], row.get("CODE_ID") or "", row.get("TXT_NAME") or "",
-                parse_dms(row.get("GEO_LAT_ACCURACY") or ""), parse_dms(row.get("GEO_LONG_ACCURACY") or ""), SourceRef("DESIGNATED_POINT.csv", row_number)))
+                parse_dms(row.get("GEO_LAT_ACCURACY") or ""), parse_dms(row.get("GEO_LONG_ACCURACY") or ""), SourceRef("DESIGNATED_POINT.csv", row_number), waypoint_country(row.get("CODE_FIR") or "")))
         except ValueError:
-            continue
+            model.rejected_records.append(RejectedRecord(
+                kind="designated-point", key=row.get("CODE_ID") or row.get("SIGNIFICANT_POINT_ID") or "",
+                reason="invalid coordinate or unmapped country", source=SourceRef("DESIGNATED_POINT.csv", row_number),
+            ))
     for row_number, row in enumerate(_rows(root / "RTE_SEG.csv"), start=2):
         model.airway_legs.append(AirwayLeg(row.get("TXT_DESIG") or "", _number(row.get("VAL_SORT") or "0"),
             row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number)))
@@ -189,7 +199,7 @@ def _load_terminal_coordinate_pages(model: NavModel) -> None:
                 key = f"{chart.airport}:{chart.filename}:{chart.page}:{sequence}:{point.ident}"
                 model.terminal_waypoints.append(TerminalWaypoint(
                     key, chart.airport, point.ident, point.latitude, point.longitude,
-                    SourceRef((airport_directory / chart.filename).relative_to(model.root).as_posix(), chart.page, chart.page, chart.source.sha256),
+                    SourceRef((airport_directory / chart.filename).relative_to(model.root).as_posix(), chart.page, chart.page, chart.source.sha256), chart.airport[:2],
                 ))
 
 

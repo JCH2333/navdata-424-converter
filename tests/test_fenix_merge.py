@@ -2,8 +2,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model, build_rejection_report, encode_frequency, missing_navaids, runway_threshold
-from navdata_converter.model import Airport, Navaid, NavModel, RejectedRecord, Runway, SourceRef
+from navdata_converter.fenix import _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, missing_navaids, runway_threshold
+from navdata_converter.model import Airport, Navaid, NavModel, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
 def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path):
@@ -58,3 +58,23 @@ def test_rejection_report_preserves_unmapped_source_record(tmp_path):
     report = json.loads(build_rejection_report(model, tmp_path / "report").read_text(encoding="utf-8"))
 
     assert report["rejected_records"] == [{"kind": "VOR", "key": "TD", "reason": "unmapped country", "source": {"file": "VOR.csv", "row": 13, "page": None, "sha256": None}}]
+
+
+def test_waypoint_phases_keep_designated_collocation_observable(tmp_path):
+    connection = sqlite3.connect(tmp_path / "waypoints.db3")
+    connection.executescript("""
+        CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
+        CREATE TABLE WaypointLookup (Ident TEXT, Country TEXT, ID INTEGER);
+        CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Latitude REAL, Longtitude REAL);
+    """)
+    connection.execute("INSERT INTO Waypoints VALUES (1, 'OLD', 0, 'OLD', 1, 1, NULL)")
+    source = SourceRef("fixture", 1)
+    model = NavModel(Path("."), terminal_waypoints=[
+        TerminalWaypoint("terminal", "ZBAD", "TERM", 2, 2, source, "ZB"),
+        TerminalWaypoint("same-location", "ZBAD", "SKIP", 1, 1, source, "ZB"),
+    ], waypoints=[Waypoint("designated", "DES", "DES", 2, 2, source, "ZB")])
+
+    counts = _insert_waypoints(connection, model)
+
+    assert counts == {"terminal_waypoints_inserted": 1, "designated_waypoints_inserted": 1, "navaid_waypoints_inserted": 0}
+    assert connection.execute("SELECT ID, Ident, Collocated FROM Waypoints ORDER BY ID").fetchall() == [(1, "OLD", 0), (2, "TERM", 0), (3, "DES", 0)]
