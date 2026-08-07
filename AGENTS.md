@@ -151,4 +151,10 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 ## 2026-08-08 航路输入与参考差异
 
 - `RTE_SEG.csv` 已解析为 1354 条航路、4446 条来源航段，但 Fenix 适配器尚未投影。与只读参考相对官方模板新增的 478 条航路比较，2608 CSV 有 483 条官方缺失航路；有向航段集合精确一致为 0 条，只有 185 条存在至少一条同向重叠航段。CSV 独有 3 条航路，参考独有 `P777`、`UP777` 两条。
-- 已验证样本：CSV 的 `H118` 仅为 `PAN -> NIXAS`，参考的 H118 为 `PAN <-> SADGO`；CSV 的 `FANS-1` 为 `NIVUX -> XIC -> LEVBA`，参考为 `JHG <-> POXUB` 与 `JHG <-> SADAV`。因此不能把参考航段复制或反推为 CSV 映射；按 CSV 写入会产生来源正确但不等于本地参考的航路内容。该输入差异阻止在“CSV/PDF 唯一输入”约束下实现参考的航路字节一致，除非取得与参考一致的原始航路来源或用户明确改变比较目标。
+- 已验证样本：CSV 的 `H118` 仅为 `PAN -> NIXAS`，参考的 H118 为 `PAN <-> SADGO`；CSV 的 `FANS-1` 为 `NIVUX -> XIC -> LEVBA`，参考为 `JHG <-> POXUB` 与 `JHG <-> SADAV`。因此不能把参考航段复制或反推为 CSV 映射；按 CSV 直接写入会产生来源正确但不等于本地参考的航路内容。用户已确认成品全部可由当前 PDF/CSV 推导，故此差异只说明航路 PDF/CSV 来源链或解析尚未完成，必须继续寻找和解析原始证据，不能作为停止逐字节一致目标的依据。
+
+## 2026-08-08 数据库编码表格文字坐标重建
+
+- 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZLXH/ZLXH-4G.pdf` 的 `OMBON-9D` 行在 PDF 对象流中被交错为 `RF[XHC26,TF 5] XH678XH606`，但原生文字对象的同一基线坐标明确给出 `RF[XHC26, 5] XH678 R MAX230 RNP0.3`，下一基线为 `TF XH606`。
+- 解决方式：`_positioned_database_text` 以 2.5 点基线容差分组 PDF words，再按 x 坐标重建行；只恢复表中可见文本，不推断航段语义或读取参考库。`test_rebuilds_interleaved_database_rf_table_row_from_word_positions` 覆盖该对象流交错模式。
+- 验证：重新解析 2608 PDF/CSV 后，数据库编码程序段从 4853 增至 4878；完整候选的普通终端程序拒绝从 13 降至 4，写入程序从 1984 增至 2004、航段从 9327 增至 9776。`integrity_check=ok`，全量 pytest 85 passed。候选 SHA-256 `43c9690e6831bfa479f1fa1c1f593f6ca866f0be2b501e3fb90228abebedc03f` 仍不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，因此仍为不可部署的测试候选。

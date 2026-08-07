@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 11
+_EVIDENCE_CACHE_VERSION = 12
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -289,6 +289,26 @@ def extract_positioned_coordinate_page_points(words: list[tuple[float, float, fl
             longitude += float(match["lon_sec"]) / 3600
         result.append((coordinate_y, coordinate_x, ChartFixCoordinate(identifier, latitude, longitude, match.group(0))))
     return tuple(point for _, _, point in sorted(result))
+
+
+def _positioned_database_text(words: list[tuple[float, float, float, float, str, int, int, int]]) -> str:
+    """Rebuild database-table rows from rendered text-object positions.
+
+    Some plates contain several procedure tables and rotated copyright text.
+    Their PDF object order can interleave adjacent table rows, even when each
+    cell's rendered baseline is intact. Group only objects on the same
+    baseline, then order them left-to-right.
+    """
+    rows: list[list[tuple[float, float, str]]] = []
+    for x0, y0, _, _, raw_text, *_ in sorted(words, key=lambda word: (word[1], word[0])):
+        text = raw_text.strip()
+        if not text:
+            continue
+        if rows and abs(rows[-1][0][1] - y0) <= 2.5:
+            rows[-1].append((x0, y0, text))
+        else:
+            rows.append([(x0, y0, text)])
+    return "\n".join(" ".join(text for _, _, text in sorted(row)) for row in rows)
 
 
 def extract_positioned_route_fixes(words: list[tuple[float, float, float, float, str, int, int, int]]) -> tuple[ChartRouteFix, ...]:
@@ -804,7 +824,7 @@ def extract_coordinate_chart(pdf: Path, airport: str, chart_type: str, chart_nam
 
 
 def extract_database_chart(pdf: Path, airport: str, chart_type: str, chart_name: str) -> list[ProcedureChart]:
-    """Use position-sorted text extraction for database-coding procedure tables.
+    """Use rendered text positions for database-coding procedure tables.
 
     CAAC PDFs often store table cells by draw order, which can detach a leg
     from its procedure heading.  Sorting the native text objects by position
@@ -814,7 +834,8 @@ def extract_database_chart(pdf: Path, airport: str, chart_type: str, chart_name:
     result: list[ProcedureChart] = []
     with pymupdf.open(pdf) as document:
         for page_number, page in enumerate(document, start=1):
-            result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, page.get_text("text", sort=True), file_hash))
+            text = _positioned_database_text(page.get_text("words"))
+            result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, text, file_hash))
     return result
 
 

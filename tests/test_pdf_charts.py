@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, _positioned_database_text, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -243,6 +243,28 @@ def test_splits_multiple_rf_rows_compressed_into_one_pdf_text_line():
 
     assert [(item.center_ident, item.fix_ident, item.turn_direction) for item in evidence] == [
         ("RTX63", "TX610", "R"), ("RTX63", "TX614", "R"),
+    ]
+
+
+def test_rebuilds_interleaved_database_rf_table_row_from_word_positions():
+    words = [
+        (57.5, 428.9, 66.0, 435.0, "TF", 28, 0, 0),
+        (105.1, 428.9, 126.1, 435.0, "XH606", 28, 1, 0),
+        (39.8, 441.4, 76.8, 447.5, "RF[XHC26,", 29, 0, 0),
+        (105.0, 441.4, 126.1, 447.5, "XH678", 29, 1, 0),
+        (78.7, 441.4, 85.0, 447.5, "5]", 29, 0, 1),
+        (240.9, 441.4, 245.5, 447.5, "R", 29, 2, 0),
+        (315.3, 441.4, 341.0, 447.5, "MAX230", 29, 3, 0),
+        (358.9, 441.4, 382.3, 447.5, "RNP0.3", 29, 4, 0),
+    ]
+
+    text = _positioned_database_text(words)
+
+    assert "RF[XHC26, 5] XH678 R MAX230 RNP0.3" in text
+    evidence = extract_terminal_leg_evidence("RWY10 离场 OMBON-9D\n" + text)
+    assert [(item.leg_type, item.center_ident, item.fix_ident, item.turn_direction, item.speed_limit_knots) for item in evidence] == [
+        ("TF", None, "XH606", None, None),
+        ("RF", "XHC26", "XH678", "R", 230),
     ]
 
 
