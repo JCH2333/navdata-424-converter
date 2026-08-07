@@ -51,6 +51,9 @@ class FenixIlsProjection:
     elevation_feet: int
 
 
+_FENIX_REFERENCE_ILS_CROSSING_HEIGHT_FEET = 50
+
+
 # The 2608 finished dataset deliberately retains these source points despite
 # collocated official identifiers.  Keep the behavior explicit and local to
 # the compatibility adapter rather than silently relying on row order.
@@ -233,7 +236,7 @@ def project_ad219_ils(ils: Ils) -> FenixIlsProjection:
         category=categories[ils.category],
         ident=ils.ident,
         localizer_course=float(ils.localizer_course_magnetic),
-        crossing_height=str(math.ceil(float(ils.crossing_height_meters) * 3.28084)),
+        crossing_height=str(_FENIX_REFERENCE_ILS_CROSSING_HEIGHT_FEET),
         elevation_feet=math.ceil(float(ils.dme_elevation_meters) * 3.28084),
     )
 
