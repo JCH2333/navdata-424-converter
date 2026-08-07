@@ -106,6 +106,7 @@ class ProcedureChart:
     procedure_labels: tuple[str, ...]
     runways: tuple[str, ...]
     waypoints: tuple[str, ...]
+    terminal_legs: tuple["ChartTerminalLeg", ...]
     fix_coordinates: tuple["ChartFixCoordinate", ...]
     source: SourceRef
 
@@ -117,6 +118,15 @@ class ChartFixCoordinate:
     ident: str | None
     latitude: float
     longitude: float
+    raw: str
+
+
+@dataclass(frozen=True)
+class ChartTerminalLeg:
+    procedure_label: str
+    runway: str
+    leg_type: str
+    fix_ident: str | None
     raw: str
 
 

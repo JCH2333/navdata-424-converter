@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
-from .model import ChartFixCoordinate, ProcedureChart, SourceRef
+from .model import ChartFixCoordinate, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -26,6 +26,8 @@ _CHART_COORDINATE = re.compile(
     r"\s*[,/ ]*E\s*(?P<lon_deg>\d{3})\s*(?:[°º]|D)?\s*(?P<lon_min>\d{2}(?:\.\d+)?)\s*(?:['′])?\b",
     re.IGNORECASE,
 )
+_DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s+[^\n]+?\s+(?P<label>[A-Z0-9]{1,6}-\d{2}[AD])(?:\b|\()")
+_DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
 
 
 def extract_fix_coordinates(text: str) -> tuple[ChartFixCoordinate, ...]:
@@ -44,6 +46,53 @@ def extract_fix_coordinates(text: str) -> tuple[ChartFixCoordinate, ...]:
             raw=match.group(0),
         ))
     return tuple(coordinates)
+
+
+def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
+    """Extract ordered database-chart rows without inferring ARINC semantics.
+
+    PDF table reading order places a leading CF/CA row immediately before its
+    procedure heading.  It is attached only when the next observable heading
+    confirms that association; all remaining rows retain their literal text.
+    """
+    result: list[ChartTerminalLeg] = []
+    active_label = ""
+    active_runway = ""
+    active_rows: list[tuple[str, str | None, str]] = []
+    pending_rows: list[tuple[str, str | None, str]] = []
+
+    def flush() -> None:
+        nonlocal active_rows
+        if not active_label:
+            return
+        result.extend(
+            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw)
+            for leg_type, fix_ident, raw in active_rows
+        )
+        active_rows = []
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        heading = _DATABASE_PROCEDURE.search(line)
+        if heading:
+            flush()
+            active_label = heading["label"]
+            active_runway = heading["runway"]
+            active_rows = pending_rows
+            pending_rows = []
+            continue
+        leg = _DATABASE_LEG.match(line)
+        if not leg:
+            continue
+        row = (leg["leg_type"], leg["fix"], line)
+        if leg["leg_type"] in {"CF", "CA"} and active_rows:
+            pending_rows.append(row)
+        elif active_label:
+            active_rows.append(row)
+        else:
+            pending_rows.append(row)
+    flush()
+    return tuple(result)
 
 
 def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str = "") -> list[ProcedureChart]:
@@ -66,6 +115,7 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str
             procedure_labels=labels,
             runways=runways,
             waypoints=waypoints,
+            terminal_legs=extract_terminal_leg_evidence(text),
             fix_coordinates=extract_fix_coordinates(text),
             source=SourceRef(str(pdf), page_number, page_number, file_hash),
         ))
