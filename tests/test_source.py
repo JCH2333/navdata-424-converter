@@ -1,7 +1,7 @@
 from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, Ils, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
 import pytest
 
-from navdata_converter.source import _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
+from navdata_converter.source import _airport_altitude_feet, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -37,6 +37,11 @@ def test_surface_mapping_uses_fenix_enumerations():
 def test_naip_dimensions_convert_meters_to_fenix_feet():
     assert _feet("2400") == 7874
     assert _feet("3000") == 9843
+
+
+def test_naip_airport_transition_heights_convert_to_hundred_foot_fenix_values():
+    assert _airport_altitude_feet("3000") == 9800
+    assert _airport_altitude_feet("3600") == 11800
 
 
 def test_naip_runway_elevations_use_val_elev_not_zero_threshold_field():

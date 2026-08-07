@@ -92,6 +92,11 @@ def _feet(value: str) -> int:
     return round(_float(value) * 3.28084)
 
 
+def _airport_altitude_feet(value: str) -> int:
+    """Project airport transition heights to Fenix's 100-foot resolution."""
+    return int(round(_float(value) * 3.28084, -2))
+
+
 def romanize_name(value: str) -> str:
     """Match Fenix's uppercase, separator-free Chinese place-name spelling."""
     return "".join(lazy_pinyin(value or "")).upper()
@@ -147,9 +152,9 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
             continue
         key = row["AD_HP_ID"]
         model.airports[key] = Airport(key, icao, row.get("TXT_NAME") or icao,
-            parse_dms(row.get("GEO_LAT_ACCURACY") or ""), parse_dms(row.get("GEO_LONG_ACCURACY") or ""),
-            _feet(row.get("VAL_ELEV") or "0"), _feet(row.get("VAL_TRANSITION_ALT") or "0"),
-            _number(row.get("VAL_TRANSITION_LEVEL") or "0"), SourceRef("AD_HP.csv", row_number))
+            round(parse_dms(row.get("GEO_LAT_ACCURACY") or ""), 6), round(parse_dms(row.get("GEO_LONG_ACCURACY") or ""), 6),
+            _feet(row.get("VAL_ELEV") or "0"), _airport_altitude_feet(row.get("VAL_TRANSITION_ALT") or "0"),
+            _airport_altitude_feet(row.get("VAL_TRANSITION_LEVEL") or "0"), SourceRef("AD_HP.csv", row_number))
 
     runway_airports: dict[str, str] = {}
     dimensions: dict[str, tuple[int, int, str]] = {}
