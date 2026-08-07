@@ -143,3 +143,7 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 
 - 同一终端坐标页固定点可被多个邻近机场引用；去重后它们共用一个物理 `Waypoint`，但每个机场的程序解析都需能追溯到该 ID。临时终端来源映射现为每个 `(机场, 标识, 坐标)` 登记同一写入 ID。指定点阶段也登记 `(标识, 坐标)` 的写入 ID，以便没有本场终端坐标页时按指定点来源相位消解同址航点。两类映射均为连接内临时表，不进入输出 schema。
 - 最小 fixture 覆盖 `ZSJD/ZSTX` 共享 `P473` 终端点及同址指定点的独立来源 ID。完整候选 `output\\candidate-2608-shared-source-phases`：终端程序由 1926 增至 1984、航段由 9040 增至 9327，普通程序拒绝由 71 降至 13，目标航点歧义归零；保持拒绝仍为 292。剩余普通拒绝为 8 个 RF 弧心无来源坐标、3 个固定点无来源坐标、1 个未知程序类型和 1 个 HF 航段。`integrity_check=ok`；Waypoints 为 328831/330043，Terminals 为 99088/101618，TerminalLegs 与 TerminalLegsEx 均为 824173/845147，候选 SHA-256 `9a3f2de5a7b1e8eb2a392f13d4e31bc87c53ed62f7c3a350ca9e694a7e0ecc2b`，仍不得部署或发布。
+
+## 2026-08-08 ILS 来源缺口抽查
+
+- 对拒绝的 `ZBXH/IYR` 直接读取 `Terminal\\ZBXH\\锡林浩特.pdf` AD 2.19 第 15 页原生文本与文字坐标：LOC 22 给出识别码、109.3 MHz 与坐标；GP 22 给出 3 度下滑角和 RDH 16.7 m；DME 22 给出标高 1013 m，但该页没有 LOC 磁航向。故 `missing LOC course` 是 2608 PDF 内容缺口而非解析正则遗漏，不能由跑道方位或参考 ILS 回填。
