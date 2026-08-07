@@ -9,7 +9,7 @@ from .deployment import deploy, restore
 from .fenix import ConversionBlocked, build_rejection_report, convert
 from .source import load_naip
 from .validation import validate_candidate
-from .pdf_charts import extract_airport_charts, extract_airport_coordinate_pages, extract_chart
+from .pdf_charts import extract_airport_charts, extract_airport_coordinate_pages, extract_approach_chart, extract_chart
 from .reference_diff import compare_databases
 from .reference_delta import inspect_approach_chart_coverage, inspect_database_fix_coverage, inspect_database_procedure_plan_coverage, inspect_reference_delta, inspect_role_fix_coverage, inspect_terminal_waypoint_coverage
 
@@ -68,6 +68,13 @@ def main(argv: list[str] | None = None) -> int:
     coordinate_inspection = commands.add_parser("inspect-coordinate-pages")
     coordinate_inspection.add_argument("--airport-directory", required=True)
     coordinate_inspection.set_defaults(handler=lambda a: print(json.dumps([_chart_payload(item) for item in extract_airport_coordinate_pages(Path(a.airport_directory))], ensure_ascii=True, indent=2)) or 0)
+    vector_inspection = commands.add_parser("inspect-vector-route-fixes")
+    vector_inspection.add_argument("--pdf", required=True)
+    vector_inspection.add_argument("--airport", required=True)
+    vector_inspection.add_argument("--chart-name", default="")
+    vector_inspection.set_defaults(handler=lambda a: print(json.dumps([
+        _chart_payload(item) for item in extract_approach_chart(Path(a.pdf), a.airport, "instrument-approach-index", a.chart_name, include_vector_evidence=True)
+    ], ensure_ascii=True, indent=2)) or 0)
     difference = commands.add_parser("diff-reference")
     difference.add_argument("--candidate", required=True)
     difference.add_argument("--reference", required=True)

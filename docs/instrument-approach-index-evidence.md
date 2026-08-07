@@ -25,6 +25,8 @@ python -m navdata_converter.cli inspect-role-fix-coverage `
 
 它不表示完整航段顺序，也不会直接写入 `TerminalLegs` 或终端航路点表。`GP`、`INOP` 等下滑道状态文字被显式排除。
 
+对缺少 IAF/IF 等角色文字的复飞路径，可使用 `inspect-vector-route-fixes --pdf <图表PDF> --airport <ICAO>` 按需读取该页的黑色矢量程序笔画。当前辅助规则只接受贴近路径、且带数字的固定点标识，明确排除跑道/方位缩写和性能表文字。该模式不会进入全量转换或 PDF 证据缓存路径，避免复杂地图图页拖慢常规转换；其结果仅用于诊断和规则验证。
+
 输出中的 `reference_without_evidence` 是后续优先解析的缺口；`evidence_without_reference` 则需要人工检查图表索引、跑道命名和成品数据，不能据此直接补写程序。
 
 诊断会单独报告不等于 `R{跑道号}` 的成品进近名称。它们通常是同一跑道上的 ILS、RNP 或其他独立进近程序，必须通过图表内容继续解析；不能将它们视为异常或用跑道简名替代。

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -153,6 +153,23 @@ def test_extracts_role_labelled_route_fixes_without_promoting_unrelated_text():
     ]
 
     assert extract_positioned_route_fixes(words) == (ChartRouteFix("YK603", "IAF"),)
+
+
+def test_extracts_identifier_next_to_black_vector_route_stroke():
+    words = [
+        (40.0, 18.0, 66.0, 26.0, "HZ412", 1, 0, 0),
+        (80.0, 70.0, 106.0, 78.0, "NOTE", 2, 0, 0),
+    ]
+    drawings = [{"type": "s", "color": (0.0, 0.0, 0.0), "width": 0.42, "items": [("l", (30.0, 22.0), (72.0, 22.0))]}]
+
+    assert extract_vector_route_fixes(words, drawings) == (ChartRouteFix("HZ412", "VECTOR"),)
+
+
+def test_vector_route_evidence_ignores_long_map_outline_strokes():
+    words = [(90.0, 18.0, 116.0, 26.0, "MAP01", 1, 0, 0)]
+    drawings = [{"type": "s", "color": (0.0, 0.0, 0.0), "width": 0.42, "items": [("l", (0.0, 22.0), (200.0, 22.0))]}]
+
+    assert extract_vector_route_fixes(words, drawings) == ()
 
 
 def test_chart_rows_decode_utf8_index(tmp_path):

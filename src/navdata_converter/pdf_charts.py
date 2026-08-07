@@ -21,7 +21,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 3
+_EVIDENCE_CACHE_VERSION = 5
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -213,6 +213,80 @@ def extract_positioned_route_fixes(words: list[tuple[float, float, float, float,
                 candidates.append((vertical_gap, -horizontal_overlap, fix))
         if candidates:
             result.append(ChartRouteFix(min(candidates)[2], role))
+    return tuple(dict.fromkeys(result))
+
+
+def _point_xy(point: object) -> tuple[float, float]:
+    return float(getattr(point, "x", point[0])), float(getattr(point, "y", point[1]))  # type: ignore[index]
+
+
+def _segment_distance(x: float, y: float, start: object, end: object) -> float:
+    x1, y1 = _point_xy(start)
+    x2, y2 = _point_xy(end)
+    dx, dy = x2 - x1, y2 - y1
+    length_squared = dx * dx + dy * dy
+    if length_squared == 0:
+        return ((x - x1) ** 2 + (y - y1) ** 2) ** 0.5
+    fraction = max(0.0, min(1.0, ((x - x1) * dx + (y - y1) * dy) / length_squared))
+    return ((x - (x1 + fraction * dx)) ** 2 + (y - (y1 + fraction * dy)) ** 2) ** 0.5
+
+
+def extract_vector_route_fixes(words: list[tuple[float, float, float, float, str, int, int, int]], drawings: list[dict[str, object]]) -> tuple[ChartRouteFix, ...]:
+    """Retain identifiers printed next to a black vector procedure path.
+
+    The test is deliberately geometric: a candidate must be close to an actual
+    stroke segment, not merely inside a drawing's bounding rectangle. It is
+    evidence for later plan decoding and never establishes leg order by itself.
+    """
+    cell_size = 24.0
+    cells: dict[tuple[int, int], list[tuple[object, object]]] = {}
+
+    def index_segment(start: object, end: object) -> None:
+        x1, y1 = _point_xy(start)
+        x2, y2 = _point_xy(end)
+        # Long strokes are chart borders, map outlines or tables. Procedure
+        # paths are emitted as short vector pieces around their labelled fixes.
+        if max(abs(x2 - x1), abs(y2 - y1)) > 96:
+            return
+        for cell_x in range(int(min(x1, x2) // cell_size), int(max(x1, x2) // cell_size) + 1):
+            for cell_y in range(int(min(y1, y2) // cell_size), int(max(y1, y2) // cell_size) + 1):
+                cells.setdefault((cell_x, cell_y), []).append((start, end))
+
+    for drawing in drawings:
+        if drawing.get("type") != "s" or drawing.get("color") != (0.0, 0.0, 0.0):
+            continue
+        if not 0.2 <= float(drawing.get("width") or 0.0) <= 1.0:
+            continue
+        items = drawing.get("items", [])
+        if len(items) > 96:
+            continue
+        for item in items:
+            if item[0] == "l":
+                index_segment(item[1], item[2])
+            elif item[0] == "c":
+                for start, end in zip(item[1:], item[2:]):
+                    index_segment(start, end)
+    result = []
+    for x0, y0, x1, y1, raw_identifier, *_ in words:
+        identifier = raw_identifier.upper()
+        if (
+            not _COORDINATE_PAGE_IDENT.fullmatch(identifier)
+            or not any(character.isdigit() for character in identifier)
+            or identifier.startswith(("RWY", "VAR"))
+            or identifier in _IGNORED
+            or identifier in _ROUTE_ROLE
+        ):
+            continue
+        center_x, center_y = (x0 + x1) / 2, (y0 + y1) / 2
+        cell_x, cell_y = int(center_x // cell_size), int(center_y // cell_size)
+        nearby_segments = [
+            segment
+            for x_offset in (-1, 0, 1)
+            for y_offset in (-1, 0, 1)
+            for segment in cells.get((cell_x + x_offset, cell_y + y_offset), [])
+        ]
+        if any(_segment_distance(center_x, center_y, start, end) <= 8 for start, end in nearby_segments):
+            result.append(ChartRouteFix(identifier, "VECTOR"))
     return tuple(dict.fromkeys(result))
 
 
@@ -555,12 +629,16 @@ def extract_database_chart(pdf: Path, airport: str, chart_type: str, chart_name:
     return result
 
 
-def extract_approach_chart(pdf: Path, airport: str, chart_type: str, chart_name: str) -> list[ProcedureChart]:
-    """Extract text-layer and role-labelled fix evidence from a procedure plate."""
+def extract_approach_chart(pdf: Path, airport: str, chart_type: str, chart_name: str, *, include_vector_evidence: bool = False) -> list[ProcedureChart]:
+    """Extract text-layer procedure evidence, with optional vector-path analysis."""
     file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
     result: list[ProcedureChart] = []
     with pymupdf.open(pdf) as document:
         for page_number, page in enumerate(document, start=1):
             chart = _chart_from_text(pdf, airport, chart_type, chart_name, page_number, page.get_text(), file_hash)
-            result.append(replace(chart, route_fixes=extract_positioned_route_fixes(page.get_text("words"))))
+            words = page.get_text("words")
+            route_fixes = extract_positioned_route_fixes(words)
+            if include_vector_evidence and chart_type == "instrument-approach-index":
+                route_fixes += extract_vector_route_fixes(words, page.get_drawings())
+            result.append(replace(chart, route_fixes=tuple(dict.fromkeys(route_fixes))))
     return result
