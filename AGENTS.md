@@ -170,3 +170,9 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 - 适用范围：2608 终端坐标页。`Terminal/ZHXY/ZHXY-4E.pdf` 明确打印 `XY608 N32°35.4'E114°20.1`；最后一个经度分钟字段未带引号，旧 `_DM_COORDINATE` 因强制末尾引号拒绝该行。
 - 解决方式：分钟格式的末尾分隔符改为可选，仍要求完整的 N/E、度和分钟字段；`test_pairs_coordinate_page_row_without_terminal_longitude_quote` 使用同一 PDF 的 word 坐标行覆盖。证据缓存版本随解析行为升级。
 - 验证：重新解析完整 PDF/CSV 后，`XY608` 被写入终端航点并投影 `P536-09D`、`P536-19D`；普通终端程序拒绝从 3 降至 1，程序为 2007、航段为 9796，`integrity_check=ok`。唯一剩余普通程序拒绝为 `ZYTN/NUBKI-19D` 的 `HF` 航段；候选仍不可部署或发布。
+
+## 2026-08-08 HF 保持至定位点航段
+
+- 适用范围：Fenix 2608 终端数据库编码页的 `HF` 航段。`Terminal/ZYTN/ZYTN-4Z01.pdf` 为 `NUBKI-19D` 明确打印 `HF TN653 Y 257 L`，高度列为 `1800 m / or by ATC`。该页的高度文字基线比 HF 主行高约 6 点，排序后位于其紧邻前行；同页 `HM` 采用相同版式。
+- 解决方式：HF 与 HM 共用保持属性解析和 Fenix `TrackCode` 投影；仅在保持航段无其他高度时，使用紧邻前置的纯数字高度行。`test_extracts_holding_to_fix_course_altitude_and_turn` 与 HF 投影 fixture 覆盖航向、转向和 1800m 到 `5900A` 的量化，未读取参考记录。
+- 验证：完整重新解析后 `NUBKI-19D` 的 HF 解析为 `TN653/257/L/1800m`；候选普通终端程序拒绝归零，程序为 2008、航段为 9802，`integrity_check=ok`。现有 `HM` 保持航段仍按专用延后策略计数 309 条，候选仍不可部署或发布。

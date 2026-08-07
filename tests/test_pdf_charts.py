@@ -276,6 +276,17 @@ def test_extracts_inline_holding_course_altitude_turn_and_speed():
     ]
 
 
+def test_extracts_holding_to_fix_course_altitude_and_turn():
+    evidence = extract_terminal_leg_evidence(
+        "RWY23 离场 NUBKI-19D\n1800\nHF TN653 Y 257 L\nor by ATC\nTF P212"
+    )
+
+    assert [(item.leg_type, item.fix_ident, item.course_degrees, item.altitude_meters, item.turn_direction) for item in evidence] == [
+        ("HF", "TN653", 257.0, 1800.0, "L"),
+        ("TF", "P212", None, None, None),
+    ]
+
+
 def test_pairs_coordinate_page_columns_only_when_counts_match():
     text = "YK401\nBM\nN40°35'40\"E121°48'14\"\nN39°39.4'E121°44.8'"
 

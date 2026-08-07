@@ -119,7 +119,7 @@ def project_database_terminal_leg(
     type_codes = {"1": "6", "2": "5"}
     if procedure_type not in type_codes:
         raise ValueError(f"unsupported Fenix procedure type: {procedure_type}")
-    if leg.leg_type not in {"CA", "CF", "DF", "IF", "RF", "TF"}:
+    if leg.leg_type not in {"CA", "CF", "DF", "HF", "IF", "RF", "TF"}:
         raise ValueError(f"unsupported database leg type: {leg.leg_type}")
     if leg.fix_ident and waypoint is None:
         raise ValueError(f"missing resolved waypoint for {leg.fix_ident}")

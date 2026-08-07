@@ -188,6 +188,13 @@ def test_projects_database_leg_constraints_into_fenix_leg_and_extension_fields()
     assert project_database_terminal_leg(ChartTerminalLeg("BM-09D", "04", "IF", "YK551", "IF YK551"), "2", "RW04", (327066, 40.624444, 122.418333)).track_code == "IF"
     rf = ChartTerminalLeg("P363-9D", "10", "RF", "XH604", "RF[XHC20, 4] XH604", "离场", turn_direction="L", center_ident="XHC20")
     assert project_database_terminal_leg(rf, "2", "RW10", (322765, 34.8075, 102.709917), (322766, 34.87325, 102.695861)).center_id == 322766
+    hf = ChartTerminalLeg("NUBKI-19D", "23", "HF", "TN653", "HF TN653 Y 257 L", "离场", course_degrees=257.0, altitude_meters=1800.0, turn_direction="L")
+    assert project_database_terminal_leg(hf, "2", "RW23", (327032, 41.888611, 125.768556)).__dict__ == {
+        "type_code": "5", "transition": "RW23", "track_code": "HF", "waypoint_id": 327032,
+        "waypoint_latitude": 41.888611, "waypoint_longitude": 125.768556, "turn_direction": "L",
+        "course": 257.0, "altitude": "5900A", "waypoint_description": "E", "speed_limit": None,
+        "speed_limit_description": None, "center_id": None, "center_latitude": None, "center_longitude": None,
+    }
 
 
 def test_inserts_fully_resolved_source_sid_with_paired_extension_legs(tmp_path):

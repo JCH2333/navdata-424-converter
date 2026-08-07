@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 13
+_EVIDENCE_CACHE_VERSION = 15
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -434,13 +434,17 @@ def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_id
         course = numeric[0]
     elif leg_type == "DF" and numeric:
         altitude = numeric[0]
-    elif leg_type == "HM":
+    elif leg_type in {"HF", "HM"}:
         inline_values = lines[start].replace(",", " ").split()
         inline_turn = next((value for value in inline_values if value in {"L", "R"}), None)
         inline_speed_match = re.search(r"\bMAX(\d{2,3})\b", lines[start], re.IGNORECASE)
         inline_numeric = [float(value) for value in inline_values if value.isdecimal()]
         course = inline_numeric[0] if inline_numeric else None
-        altitude = inline_numeric[1] if len(inline_numeric) > 1 else None
+        altitude = inline_numeric[1] if len(inline_numeric) > 1 else (numeric[0] if numeric else None)
+        # Some holding-table altitude cells have a baseline a few points above
+        # their leg cell, so position sorting emits the value just before HF/HM.
+        if altitude is None and start and lines[start - 1].isdecimal():
+            altitude = float(lines[start - 1])
         turn_direction = turn_direction or inline_turn
         speed = speed or (int(inline_speed_match.group(1)) if inline_speed_match else None)
     return course, altitude, turn_direction, speed
