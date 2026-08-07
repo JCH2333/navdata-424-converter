@@ -55,6 +55,22 @@ def _float(value: str, default: float = 0.0) -> float:
         return default
 
 
+def _surface(value: str) -> str:
+    normalized = (value or "").upper()
+    if any(token in normalized for token in ("水泥", "沥青", "混凝土", "CON", "ASP")):
+        return "ASP"
+    if any(token in normalized for token in ("草", "土", "GRE", "GRASS")):
+        return "GRE"
+    if any(token in normalized for token in ("水", "WAT")):
+        return "WAT"
+    return "U"
+
+
+def _feet(value: str) -> int:
+    """NAIP vertical and runway dimensions are meters; Fenix stores feet."""
+    return round(_float(value) * 3.28084)
+
+
 def load_naip(root: Path) -> NavModel:
     """Load only structured data; PDFs are inspected separately and never guessed."""
     root = root.resolve()
@@ -66,7 +82,7 @@ def load_naip(root: Path) -> NavModel:
         key = row["AD_HP_ID"]
         model.airports[key] = Airport(key, icao, row.get("TXT_NAME") or icao,
             parse_dms(row.get("GEO_LAT_ACCURACY") or ""), parse_dms(row.get("GEO_LONG_ACCURACY") or ""),
-            _number(row.get("VAL_ELEV") or "0"), _number(row.get("VAL_TRANSITION_ALT") or "0"),
+            _feet(row.get("VAL_ELEV") or "0"), _feet(row.get("VAL_TRANSITION_ALT") or "0"),
             _number(row.get("VAL_TRANSITION_LEVEL") or "0"), SourceRef("AD_HP.csv", row_number))
 
     runway_airports: dict[str, str] = {}
@@ -74,13 +90,13 @@ def load_naip(root: Path) -> NavModel:
     for row_number, row in enumerate(_rows(root / "RWY.csv"), start=2):
         if row.get("AD_HP_ID") in model.airports:
             runway_airports[row["RWY_ID"]] = row["AD_HP_ID"]
-            dimensions[row["RWY_ID"]] = (_number(row.get("VAL_LEN") or "0"), _number(row.get("VAL_WID") or "0"), row.get("CODE_COMPOSITION") or "")
+            dimensions[row["RWY_ID"]] = (_feet(row.get("VAL_LEN") or "0"), _feet(row.get("VAL_WID") or "0"), _surface(row.get("CODE_COMPOSITION") or ""))
     for row_number, row in enumerate(_rows(root / "RWY_DIRECTION.csv"), start=2):
         airport_key = runway_airports.get(row.get("RWY_ID") or "")
         if airport_key:
             length, width, surface = dimensions[row["RWY_ID"]]
             model.runways.append(Runway(row["RWY_DIRECTION_ID"], airport_key, row.get("TXT_DESIG") or "",
-                _float(row.get("VAL_TRUE_BRG") or "0"), length, width, surface, _number(row.get("VAL_THR_ELEV") or "0"),
+                _float(row.get("VAL_TRUE_BRG") or "0"), length, width, surface, _feet(row.get("VAL_ELEV") or "0"),
                 SourceRef("RWY_DIRECTION.csv", row_number)))
 
     for filename, kind, divisor in (("VOR.csv", "VOR", 1), ("NDB.csv", "NDB", 1)):

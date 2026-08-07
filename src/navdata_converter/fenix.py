@@ -30,59 +30,49 @@ def _copy_navdata(official: Path, output: Path) -> Path:
     return output / "nd.db3"
 
 
-def _delete_china(connection: sqlite3.Connection) -> None:
-    airport_ids = [row[0] for row in connection.execute("SELECT ID FROM Airports WHERE substr(ICAO, 1, 2) IN ('ZB','ZG','ZH','ZJ','ZL','ZP','ZS','ZU','ZW','ZY')")]
-    if not airport_ids:
-        return
-    placeholders = ",".join("?" for _ in airport_ids)
-    terminal_ids = [row[0] for row in connection.execute(f"SELECT ID FROM Terminals WHERE AirportID IN ({placeholders})", airport_ids)]
-    if terminal_ids:
-        marks = ",".join("?" for _ in terminal_ids)
-        leg_ids = [row[0] for row in connection.execute(f"SELECT ID FROM TerminalLegs WHERE TerminalID IN ({marks})", terminal_ids)]
-        if leg_ids:
-            connection.execute(f"DELETE FROM TerminalLegsEx WHERE ID IN ({','.join('?' for _ in leg_ids)})", leg_ids)
-        connection.execute(f"DELETE FROM TerminalLegs WHERE TerminalID IN ({marks})", terminal_ids)
-        connection.execute(f"DELETE FROM Terminals WHERE ID IN ({marks})", terminal_ids)
-    connection.execute(f"DELETE FROM ILSes WHERE RunwayID IN (SELECT ID FROM Runways WHERE AirportID IN ({placeholders}))", airport_ids)
-    connection.execute(f"DELETE FROM Runways WHERE AirportID IN ({placeholders})", airport_ids)
-    connection.execute(f"DELETE FROM AirportLookup WHERE ID IN ({placeholders})", airport_ids)
-    connection.execute(f"DELETE FROM Airports WHERE ID IN ({placeholders})", airport_ids)
-
-
 def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, int]:
     airport_ids: dict[str, int] = {}
+    existing_airports = dict(connection.execute("SELECT ICAO, ID FROM Airports"))
+    inserted_airports: set[str] = set()
     next_airport = _next_id(connection, "Airports")
     for airport in sorted(model.airports.values(), key=lambda item: item.icao):
+        if airport.icao in existing_airports:
+            airport_ids[airport.key] = existing_airports[airport.icao]
+            continue
         airport_id = next_airport
         next_airport += 1
         airport_ids[airport.key] = airport_id
         connection.execute("INSERT INTO Airports VALUES (?,?,?,?,?,?,?,?,?,?,?)", (airport_id, airport.name, airport.icao, None,
             airport.latitude, airport.longitude, airport.elevation_ft, airport.transition_altitude, airport.transition_level, 250, 10000))
         connection.execute("INSERT INTO AirportLookup VALUES (?,?)", (airport.icao, airport_id))
+        inserted_airports.add(airport.key)
     next_runway = _next_id(connection, "Runways")
     runways = 0
     for runway in sorted(model.runways, key=lambda item: (model.airports[item.airport_key].icao, item.ident)):
+        if runway.airport_key not in inserted_airports:
+            continue
         airport = model.airports[runway.airport_key]
         connection.execute("INSERT INTO Runways VALUES (?,?,?,?,?,?,?,?,?,?)", (next_runway, airport_ids[runway.airport_key], runway.ident,
             runway.true_heading, runway.length_ft, runway.width_ft, runway.surface, airport.latitude, airport.longitude, runway.elevation_ft))
         next_runway += 1
         runways += 1
-    return {"airports": len(airport_ids), "runways": runways}
+    return {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways}
 
 
-def convert(official_navdata: Path, model: NavModel, output: Path, reference: Path | None = None) -> dict[str, object]:
+def convert(official_navdata: Path, model: NavModel, output: Path, reference: Path | None = None, *, allow_incomplete: bool = False) -> dict[str, object]:
     profile = validate_fenix_profile(official_navdata / "nd.db3")
-    if model.rejected_procedures:
+    if model.rejected_procedures and not allow_incomplete:
         raise ConversionBlocked(f"发现 {len(model.rejected_procedures)} 个未可靠解析的程序图表，已拒绝生成候选")
     database = _copy_navdata(official_navdata, output)
     try:
         with sqlite3.connect(database) as connection:
             connection.execute("PRAGMA foreign_keys=ON")
-            _delete_china(connection)
             counts = _insert_model(connection, model)
+            connection.commit()
             connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        report = {"status": "candidate", "test_build": True, "profile": profile["config"], "counts": counts,
-                  "rejected_procedures": [], "reference": str(reference) if reference else None}
+        report = {"status": "incomplete" if model.rejected_procedures else "candidate", "test_build": True, "deployable": not model.rejected_procedures,
+                  "profile": profile["config"], "counts": counts, "rejected_procedures": [asdict(item) for item in model.rejected_procedures],
+                  "reference": str(reference) if reference else None}
         (output / "conversion-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return report
     except Exception:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import shutil
 import subprocess
 from pathlib import Path
@@ -20,8 +21,11 @@ def deploy(candidate: Path, target: Path) -> Path:
     if simulator_running():
         raise RuntimeError("FlightSimulator2024.exe 正在运行，无法覆盖 Fenix 导航数据")
     validate_candidate(candidate)
-    if not (candidate / "conversion-report.json").is_file():
+    report_path = candidate / "conversion-report.json"
+    if not report_path.is_file():
         raise RuntimeError("候选缺少转换报告，拒绝部署")
+    if not json.loads(report_path.read_text(encoding="utf-8")).get("deployable", False):
+        raise RuntimeError("候选包含未完成程序，拒绝部署")
     stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = target.parent / "backups" / f"fenix_navdata_{stamp}"
     backup.mkdir(parents=True)

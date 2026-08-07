@@ -9,12 +9,13 @@ from .fenix import ConversionBlocked, build_rejection_report, convert
 from .source import load_naip
 from .validation import validate_candidate
 from .pdf_charts import extract_chart
+from .reference_diff import compare_databases
 
 
 def _convert(args: argparse.Namespace) -> int:
     model = load_naip(Path(args.naip_root))
     try:
-        report = convert(Path(args.official_navdata), model, Path(args.output), Path(args.reference) if args.reference else None)
+        report = convert(Path(args.official_navdata), model, Path(args.output), Path(args.reference) if args.reference else None, allow_incomplete=args.allow_incomplete)
     except ConversionBlocked as error:
         report = build_rejection_report(model, Path(args.output))
         print(f"转换被安全阻止: {error}\n报告: {report}")
@@ -31,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     conversion.add_argument("--naip-root", required=True)
     conversion.add_argument("--output", required=True)
     conversion.add_argument("--reference")
+    conversion.add_argument("--allow-incomplete", action="store_true", help="generate a non-deployable diagnostic candidate")
     conversion.set_defaults(handler=_convert)
     validation = commands.add_parser("validate")
     validation.add_argument("--candidate", required=True)
@@ -49,6 +51,10 @@ def main(argv: list[str] | None = None) -> int:
     inspection.add_argument("--airport", required=True)
     inspection.add_argument("--chart-type", default="")
     inspection.set_defaults(handler=lambda a: print(json.dumps([item.__dict__ | {"source": item.source.__dict__} for item in extract_chart(Path(a.pdf), a.airport, a.chart_type)], ensure_ascii=False, indent=2)) or 0)
+    difference = commands.add_parser("diff-reference")
+    difference.add_argument("--candidate", required=True)
+    difference.add_argument("--reference", required=True)
+    difference.set_defaults(handler=lambda a: print(json.dumps(compare_databases(Path(a.candidate), Path(a.reference)), ensure_ascii=False, indent=2)) or 0)
     args = parser.parse_args(argv)
     return args.handler(args)
 
