@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _terminal_waypoint_resolutions, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
 from navdata_converter.model import Airport, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -291,6 +291,31 @@ def test_terminal_fix_prefers_one_exact_coordinate_over_nearby_collision(tmp_pat
     ])
 
     assert resolve_terminal_waypoint(connection, model, "ZYDQ", "P111") == (1, 46.56666666666667, 124.90833333333333)
+
+
+def test_terminal_procedure_resolution_prefers_terminal_source_phase_at_same_coordinate(tmp_path):
+    connection = sqlite3.connect(tmp_path / "terminal-source-phase.db3")
+    connection.execute("CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Latitude REAL, Longtitude REAL)")
+    connection.executemany(
+        "INSERT INTO Waypoints VALUES (?,?,?,?)",
+        [(1, "P09", 35.27166666666667, 119.57), (2, "P09", 35.27166666666667, 119.57)],
+    )
+    connection.execute(
+        "CREATE TEMP TABLE _fenix_source_terminal_waypoints "
+        "(Airport TEXT, Ident TEXT, Latitude REAL, Longtitude REAL, WaypointID INTEGER)"
+    )
+    connection.execute(
+        "INSERT INTO temp._fenix_source_terminal_waypoints VALUES ('ZSRZ','P09',35.27166666666667,119.57,1)"
+    )
+    source = SourceRef("Terminal/ZSRZ/ZSRZ-4E.pdf", page=1, sha256="hash")
+    model = NavModel(Path("."), terminal_waypoints=[
+        TerminalWaypoint("terminal", "ZSRZ", "P09", 35.27166666666667, 119.57, source),
+    ])
+
+    resolutions, failures = _terminal_waypoint_resolutions(connection, model)
+
+    assert failures == {}
+    assert resolutions == {("ZSRZ", "P09"): (1, 35.27166666666667, 119.57)}
 
 
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():

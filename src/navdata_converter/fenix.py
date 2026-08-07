@@ -192,6 +192,15 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
     targets: dict[str, list[tuple[int, float, float]]] = {}
     for point_id, ident, latitude, longitude in connection.execute("SELECT ID, Ident, Latitude, Longtitude FROM Waypoints"):
         targets.setdefault(str(ident), []).append((int(point_id), float(latitude), float(longitude)))
+    source_terminal_ids = {
+        (str(airport), str(ident), round(float(latitude), 9), round(float(longitude), 9)): int(waypoint_id)
+        for airport, ident, latitude, longitude, waypoint_id in connection.execute(
+            "SELECT Airport, Ident, Latitude, Longtitude, WaypointID "
+            "FROM temp._fenix_source_terminal_waypoints"
+        )
+    } if connection.execute(
+        "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='_fenix_source_terminal_waypoints'"
+    ).fetchone() else {}
     resolutions: dict[tuple[str, str], tuple[int, float, float]] = {}
     failures: dict[tuple[str, str], str] = {}
     for key, locations in source_points.items():
@@ -200,6 +209,12 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
             failures[key] = f"terminal fix {airport}/{ident} has {len(locations)} source locations"
             continue
         latitude, longitude = next(iter(locations))
+        source_id = source_terminal_ids.get((airport, ident, latitude, longitude))
+        if source_id is not None:
+            preferred = [row for row in targets.get(ident, []) if row[0] == source_id]
+            if len(preferred) == 1:
+                resolutions[key] = preferred[0]
+                continue
         matches = _resolve_terminal_target_rows(latitude, longitude, targets.get(ident, []))
         if len(matches) != 1:
             failures[key] = f"terminal fix {airport}/{ident} has {len(matches)} target waypoint matches"
@@ -392,11 +407,20 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
     for ident, latitude, longitude in connection.execute("SELECT Ident, Latitude, Longtitude FROM Waypoints"):
         designated_identities.setdefault(ident, []).append((latitude, longitude))
     next_waypoint_id = _next_id(connection, "Waypoints")
+    connection.execute("DROP TABLE IF EXISTS temp._fenix_source_terminal_waypoints")
+    connection.execute(
+        "CREATE TEMP TABLE _fenix_source_terminal_waypoints "
+        "(Airport TEXT NOT NULL, Ident TEXT NOT NULL, Latitude REAL NOT NULL, Longtitude REAL NOT NULL, WaypointID INTEGER NOT NULL)"
+    )
     terminal_count = 0
     for point in model.terminal_waypoints:
         if terminal_locations.contains(point.latitude, point.longitude):
             continue
         _insert_waypoint(connection, next_waypoint_id, point.ident, point.ident, point.latitude, point.longitude, point.country)
+        connection.execute(
+            "INSERT INTO temp._fenix_source_terminal_waypoints VALUES (?,?,?,?,?)",
+            (point.airport, point.ident, point.latitude, point.longitude, next_waypoint_id),
+        )
         terminal_locations.add(point.latitude, point.longitude)
         next_waypoint_id += 1
         terminal_count += 1
