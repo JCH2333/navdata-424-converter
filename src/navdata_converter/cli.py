@@ -11,7 +11,7 @@ from .source import load_naip
 from .validation import validate_candidate
 from .pdf_charts import extract_airport_charts, extract_airport_coordinate_pages, extract_chart
 from .reference_diff import compare_databases
-from .reference_delta import inspect_reference_delta
+from .reference_delta import inspect_reference_delta, inspect_terminal_waypoint_coverage
 
 
 def _chart_payload(chart: object) -> dict[str, object]:
@@ -71,6 +71,13 @@ def main(argv: list[str] | None = None) -> int:
     delta.add_argument("--official-navdata", required=True)
     delta.add_argument("--reference", required=True)
     delta.set_defaults(handler=lambda a: print(json.dumps(inspect_reference_delta(Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2)) or 0)
+    terminal_coverage = commands.add_parser("inspect-terminal-waypoint-coverage")
+    terminal_coverage.add_argument("--naip-root", required=True)
+    terminal_coverage.add_argument("--official-navdata", required=True)
+    terminal_coverage.add_argument("--reference", required=True)
+    terminal_coverage.set_defaults(handler=lambda a: print(json.dumps(
+        inspect_terminal_waypoint_coverage(load_naip(Path(a.naip_root)), Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2
+    )) or 0)
     args = parser.parse_args(argv)
     return args.handler(args)
 
