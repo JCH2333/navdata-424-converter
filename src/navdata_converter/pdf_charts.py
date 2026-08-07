@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 8
+_EVIDENCE_CACHE_VERSION = 9
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
