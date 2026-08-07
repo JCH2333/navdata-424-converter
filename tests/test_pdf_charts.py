@@ -99,6 +99,33 @@ def test_extracts_database_approach_transition_main_and_missed_segments():
     ]
 
 
+def test_extracts_explicit_database_approach_variants_and_matching_missed_approach():
+    evidence = extract_terminal_leg_evidence(
+        "RWY30 进近-Z\nTF MZ402\nCF MZ410\nRWY30 复飞-Z\nDF MZ406\n"
+        "RWY30 进近-Y\nTF MZ405\nRWY30 复飞-Y\nDF MZ406"
+    )
+
+    assert [(item.procedure_label, item.procedure_kind, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("R30-Z", "进近", "TF", "MZ402"),
+        ("R30-Z", "进近", "CF", "MZ410"),
+        ("R30-Z", "复飞", "DF", "MZ406"),
+        ("R30-Y", "进近", "TF", "MZ405"),
+        ("R30-Y", "复飞", "DF", "MZ406"),
+    ]
+
+
+def test_extracts_database_leg_after_rotated_text_residue():
+    evidence = extract_terminal_leg_evidence(
+        "RWY30 进近-Z\n急     TF MZ401\n使 CF MZ410\nRWY30 复飞-Z\nDF MZ406"
+    )
+
+    assert [(item.procedure_label, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("R30-Z", "TF", "MZ401"),
+        ("R30-Z", "CF", "MZ410"),
+        ("R30-Z", "DF", "MZ406"),
+    ]
+
+
 def test_pairs_coordinate_page_columns_only_when_counts_match():
     text = "YK401\nBM\nN40°35'40\"E121°48'14\"\nN39°39.4'E121°44.8'"
 

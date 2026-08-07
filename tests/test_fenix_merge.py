@@ -45,12 +45,16 @@ def test_fenix_procedure_name_matches_observed_database_labels():
     assert fenix_procedure_type("TGO-9ZA", "进场") == "1"
 
 
-def test_database_approach_segments_map_only_to_unlettered_fenix_base_identity():
+def test_database_approach_segments_keep_explicit_fenix_variant_identity():
     source = SourceRef("Terminal/ZBHZ/ZBHZ-4Z02.pdf", 1, 1, "hash")
     approach = ProcedureSegment("ZBHZ", "R29", "进近", "29", "", (), source)
+    variant = ProcedureSegment("ZBMZ", "R30-Z", "进近", "30", "", (), source)
+    missed_variant = ProcedureSegment("ZBMZ", "R30-Y", "复飞", "30", "", (), source)
     departure = ProcedureSegment("ZYYK", "BM-09D", "离场", "04", "", (), source)
 
     assert fenix_terminal_identity(approach) == ("3", "R29", "29")
+    assert fenix_terminal_identity(variant) == ("3", "R30-Z", "30")
+    assert fenix_terminal_identity(missed_variant) == ("3", "R30-Y", "30")
     assert fenix_terminal_identity(departure) == ("2", "BM09D", "04")
 
 

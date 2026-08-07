@@ -75,12 +75,11 @@ def fenix_procedure_type(label: str, procedure_kind: str) -> str:
 def fenix_terminal_identity(segment: ProcedureSegment) -> tuple[str, str, str]:
     """Map a source procedure segment to its Fenix terminal business key.
 
-    Database coding pages use a literal runway heading for an approach, while
-    Fenix names the unlettered base procedure ``R{runway}``. Lettered variants
-    require their own chart-path decoder and are deliberately not guessed.
+    Database coding pages use a literal runway heading for an approach.  An
+    explicit W/X/Y/Z suffix is retained as the Fenix procedure suffix.
     """
     if segment.kind in {"进近过渡", "进近", "复飞"}:
-        return "3", f"R{segment.runway}", segment.runway
+        return "3", segment.label, segment.runway
     return fenix_procedure_type(segment.label, segment.kind), fenix_procedure_name(segment.label), segment.runway
 
 

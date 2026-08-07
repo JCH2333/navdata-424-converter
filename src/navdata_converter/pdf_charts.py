@@ -21,7 +21,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 5
+_EVIDENCE_CACHE_VERSION = 6
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -40,9 +40,10 @@ _CHART_COORDINATE = re.compile(
 _DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)?\s*[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()")
 _DATABASE_APPROACH_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1|\u590d\u98de)"
+    r"(?:\s*-\s*(?P<variant>[WXYZ]))?"
     r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5}))?\b"
 )
-_DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
+_DATABASE_LEG = re.compile(r"\b(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
 _DATABASE_SPEED = re.compile(r"^MAX(?P<speed>\d{2,3})$", re.IGNORECASE)
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _DMS_COORDINATE = re.compile(
@@ -294,7 +295,7 @@ def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_id
     """Read observable numeric fields from one database-coding table row."""
     values: list[str] = []
     for line in lines[start + 1:]:
-        if _DATABASE_LEG.match(line) or _DATABASE_PROCEDURE.search(line):
+        if _DATABASE_LEG.search(line) or _DATABASE_PROCEDURE.search(line):
             break
         if line:
             values.append(line)
@@ -347,7 +348,8 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         if heading or approach_heading:
             flush()
             if approach_heading:
-                active_label = f"R{approach_heading['runway']}"
+                variant = approach_heading["variant"] or ""
+                active_label = f"R{approach_heading['runway']}{f'-{variant}' if variant else ''}"
                 active_runway = approach_heading["runway"]
                 active_kind = approach_heading["kind"]
                 active_transition = approach_heading["transition"] or ""
@@ -362,7 +364,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 active_rows = pending_rows
             pending_rows = []
             continue
-        leg = _DATABASE_LEG.match(line)
+        leg = _DATABASE_LEG.search(line)
         if not leg:
             continue
         next_line = lines[line_number + 1] if line_number + 1 < len(lines) else ""
@@ -370,7 +372,8 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         row = (leg["leg_type"], fix_ident, line if leg["fix"] else f"{line} {next_line}".rstrip())
         course, altitude, turn, speed = _database_leg_attributes(lines, line_number, leg["leg_type"], fix_ident)
         row = (*row, course, altitude, turn, speed)
-        if leg["leg_type"] in {"CF", "CA"} and active_rows and active_rows[-1][0] != "CA":
+        if (leg["leg_type"] in {"CF", "CA"} and active_rows and active_rows[-1][0] != "CA"
+                and not active_label.startswith("R")):
             pending_rows.append(row)
         elif active_label:
             active_rows.append(row)
@@ -620,12 +623,17 @@ def extract_coordinate_chart(pdf: Path, airport: str, chart_type: str, chart_nam
 
 
 def extract_database_chart(pdf: Path, airport: str, chart_type: str, chart_name: str) -> list[ProcedureChart]:
-    """Use fast text extraction for database-coding procedure tables."""
+    """Use position-sorted text extraction for database-coding procedure tables.
+
+    CAAC PDFs often store table cells by draw order, which can detach a leg
+    from its procedure heading.  Sorting the native text objects by position
+    restores the printed row order without interpreting chart geometry.
+    """
     file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
     result: list[ProcedureChart] = []
     with pymupdf.open(pdf) as document:
         for page_number, page in enumerate(document, start=1):
-            result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, page.get_text(), file_hash))
+            result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, page.get_text("text", sort=True), file_hash))
     return result
 
 
