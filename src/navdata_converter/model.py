@@ -73,6 +73,7 @@ class Ils:
     localizer_longitude: float
     localizer_course_magnetic: float | None
     glide_slope_degrees: float | None
+    crossing_height_meters: float | None
     glide_slope_latitude: float | None
     glide_slope_longitude: float | None
     dme_latitude: float | None

@@ -115,19 +115,28 @@ def extract_ad219_ils(text: str, airport: str, source: SourceRef) -> tuple[Ils, 
         dme_latitude = dme_longitude = dme_elevation = None
         if dme is not None:
             dme_latitude, dme_longitude = _parse_aip_dms_coordinate(dme["coordinate"])
-            elevation_match = re.search(r"(?P<elevation>\d+(?:\.\d+)?)\s*m\b", dme["tail"], re.IGNORECASE)
+            elevation_match = re.search(
+                r"(?P<elevation>\d+(?:\.\d+)?)\s*m\s*(?:与|同).{0,16}(?:GP|下滑)",
+                dme["tail"], re.IGNORECASE,
+            )
+            if elevation_match is None:
+                elevations = list(re.finditer(r"(?P<elevation>\d+(?:\.\d+)?)\s*m\b", dme["tail"], re.IGNORECASE))
+                elevation_match = elevations[-1] if elevations else None
             dme_elevation = float(elevation_match["elevation"]) if elevation_match else None
-        glide_latitude = glide_longitude = glide_angle = None
+        glide_latitude = glide_longitude = glide_angle = crossing_height = None
         if glide_path is not None:
             glide_latitude, glide_longitude = _parse_aip_dms_coordinate(glide_path["coordinate"])
             angle_match = re.search(r"(?P<angle>\d(?:\.\d+)?)\s*[°º]\s*(?:下滑角|GP)", glide_path["tail"], re.IGNORECASE)
             glide_angle = float(angle_match["angle"]) if angle_match else None
+            height_match = re.search(r"RDH\s*(?P<height>\d+(?:\.\d+)?)\s*m?\b", glide_path["tail"], re.IGNORECASE)
+            crossing_height = float(height_match["height"]) if height_match else None
         result.append(Ils(
             airport=airport.upper(), runway=runway, ident=ident, frequency_mhz=float(localizer["frequency"]),
             category=localizer["category"], localizer_latitude=localizer_latitude,
             localizer_longitude=localizer_longitude,
             localizer_course_magnetic=float(course_match["course"]) if course_match else None,
-            glide_slope_degrees=glide_angle, glide_slope_latitude=glide_latitude,
+            glide_slope_degrees=glide_angle, crossing_height_meters=crossing_height,
+            glide_slope_latitude=glide_latitude,
             glide_slope_longitude=glide_longitude, dme_latitude=dme_latitude,
             dme_longitude=dme_longitude, dme_elevation_meters=dme_elevation, source=source,
         ))

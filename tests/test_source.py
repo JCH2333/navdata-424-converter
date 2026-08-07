@@ -14,13 +14,13 @@ def test_load_terminal_landing_aids_preserves_root_relative_pdf_source(monkeypat
     airport = tmp_path / "Terminal" / "ZBCF"
     airport.mkdir(parents=True)
     source = SourceRef(str(airport / "赤峰玉龙.pdf"), 12, 12, "hash")
-    expected = Ils("ZBCF", "21", "ICF", 108.5, "I", 42.1, 118.8, 212.0, 3.2, 42.2, 118.9, 42.2, 118.9, 616.0, source)
+    expected = Ils("ZBCF", "21", "ICF", 108.5, "I", 42.1, 118.8, 212.0, 3.2, 15.0, 42.2, 118.9, 42.2, 118.9, 616.0, source)
     monkeypatch.setattr("navdata_converter.source.extract_airport_ad219_ils", lambda directory: [expected])
     model = NavModel(tmp_path)
 
     _load_terminal_landing_aids(model)
 
-    assert model.ilses == [Ils("ZBCF", "21", "ICF", 108.5, "I", 42.1, 118.8, 212.0, 3.2, 42.2, 118.9, 42.2, 118.9, 616.0, SourceRef("Terminal/ZBCF/赤峰玉龙.pdf", 12, 12, "hash"))]
+    assert model.ilses == [Ils("ZBCF", "21", "ICF", 108.5, "I", 42.1, 118.8, 212.0, 3.2, 15.0, 42.2, 118.9, 42.2, 118.9, 616.0, SourceRef("Terminal/ZBCF/赤峰玉龙.pdf", 12, 12, "hash"))]
 
 
 def test_csv_reader_supports_utf8_chart_index(tmp_path):

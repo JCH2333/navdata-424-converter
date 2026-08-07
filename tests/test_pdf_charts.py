@@ -19,7 +19,7 @@ def test_extracts_only_printed_ad219_localizer_glide_path_and_dme_fields():
     距03号跑道入口 212°MAG/385m
     GP 21 329.9 MHz N421006.4 E1185038.3
     3.2°下滑角 RDH15m
-    DME 21 ICF CH 22X (108.5 MHz) N421006.4 E1185038.1 616m
+    DME 21 ICF CH 22X (108.5 MHz) N421006.4 E1185038.1 跑道中线西135m，入口内265m，616m 与 GP 21 合装
     """
 
     extracted = extract_ad219_ils(text, "ZBCF", SourceRef("Terminal/ZBCF/airport.pdf", 12, 12, "hash"))
@@ -30,6 +30,7 @@ def test_extracts_only_printed_ad219_localizer_glide_path_and_dme_fields():
     assert (ils.localizer_latitude, ils.localizer_longitude) == pytest.approx((42.14366666666667, 118.83197222222222))
     assert ils.localizer_course_magnetic == 212.0
     assert ils.glide_slope_degrees == 3.2
+    assert ils.crossing_height_meters == 15.0
     assert (ils.glide_slope_latitude, ils.glide_slope_longitude) == pytest.approx((42.168444444444445, 118.84397222222222))
     assert (ils.dme_latitude, ils.dme_longitude, ils.dme_elevation_meters) == pytest.approx((42.168444444444445, 118.84391666666667, 616.0))
     assert ils.source == SourceRef("Terminal/ZBCF/airport.pdf", 12, 12, "hash")

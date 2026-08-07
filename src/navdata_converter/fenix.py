@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .model import ChartTerminalLeg, Navaid, NavModel, ProcedureSegment, TerminalWaypoint, is_china_icao
+from .model import ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureSegment, TerminalWaypoint, is_china_icao
 from .profile import validate_fenix_profile
 from .source import romanize_name
 
@@ -36,6 +36,19 @@ class FenixTerminalLegProjection:
     center_id: int | None = None
     center_latitude: float | None = None
     center_longitude: float | None = None
+
+
+@dataclass(frozen=True)
+class FenixIlsProjection:
+    frequency: int
+    glide_slope_angle: float
+    latitude: float
+    longitude: float
+    category: str
+    ident: str
+    localizer_course: float
+    crossing_height: str
+    elevation_feet: int
 
 
 # The 2608 finished dataset deliberately retains these source points despite
@@ -190,6 +203,34 @@ def encode_frequency(value: float, kind: str) -> int:
     for digit in digits:
         bcd = (bcd << 4) | int(digit)
     return bcd << shift
+
+
+def project_ad219_ils(ils: Ils) -> FenixIlsProjection:
+    """Project an AD 2.19 ILS only when every Fenix field is source-backed."""
+    categories = {"I": "1", "II": "2", "III": "3"}
+    if ils.category not in categories:
+        raise ConversionBlocked(f"ILS {ils.airport}/{ils.runway}/{ils.ident} has no supported CAT category")
+    missing = [
+        name for name, value in (
+            ("LOC course", ils.localizer_course_magnetic),
+            ("GP angle", ils.glide_slope_degrees),
+            ("RDH", ils.crossing_height_meters),
+            ("DME elevation", ils.dme_elevation_meters),
+        ) if value is None
+    ]
+    if missing:
+        raise ConversionBlocked(f"ILS {ils.airport}/{ils.runway}/{ils.ident} missing {', '.join(missing)}")
+    return FenixIlsProjection(
+        frequency=encode_frequency(ils.frequency_mhz, "VOR"),
+        glide_slope_angle=float(ils.glide_slope_degrees),
+        latitude=ils.localizer_latitude,
+        longitude=ils.localizer_longitude,
+        category=categories[ils.category],
+        ident=ils.ident,
+        localizer_course=float(ils.localizer_course_magnetic),
+        crossing_height=str(round(float(ils.crossing_height_meters) * 3.28084)),
+        elevation_feet=round(float(ils.dme_elevation_meters) * 3.28084),
+    )
 
 
 def _next_id(connection: sqlite3.Connection, table: str) -> int:
@@ -528,7 +569,51 @@ def _clear_china_airport_domain(connection: sqlite3.Connection) -> dict[str, int
     return counts
 
 
-def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, int]:
+def _insert_ilses(connection: sqlite3.Connection, model: NavModel, permitted_airports: set[str] | None = None) -> dict[str, object]:
+    """Append only complete, source-backed ILS rows in deterministic order."""
+    airport_ids = dict(connection.execute("SELECT ICAO, ID FROM Airports"))
+    runway_ids = {
+        (airport_id, ident): runway_id
+        for runway_id, airport_id, ident in connection.execute("SELECT ID, AirportID, Ident FROM Runways")
+    }
+    existing = {
+        (int(runway_id), str(ident), int(frequency))
+        for runway_id, ident, frequency in connection.execute("SELECT RunwayID, Ident, Freq FROM ILSes")
+    }
+    next_ils_id = _next_id(connection, "ILSes")
+    inserted = 0
+    rejected: list[dict[str, object]] = []
+    for ils in sorted(model.ilses, key=lambda item: (item.airport, item.runway, item.ident, item.frequency_mhz)):
+        if permitted_airports is not None and ils.airport not in permitted_airports:
+            continue
+        airport_id = airport_ids.get(ils.airport)
+        runway_id = runway_ids.get((airport_id, ils.runway)) if airport_id is not None else None
+        if runway_id is None:
+            rejected.append({"airport": ils.airport, "runway": ils.runway, "ident": ils.ident, "reason": "missing target runway", "source": asdict(ils.source)})
+            continue
+        try:
+            projection = project_ad219_ils(ils)
+        except ConversionBlocked as error:
+            rejected.append({"airport": ils.airport, "runway": ils.runway, "ident": ils.ident, "reason": str(error), "source": asdict(ils.source)})
+            continue
+        identity = (runway_id, projection.ident, projection.frequency)
+        if identity in existing:
+            continue
+        connection.execute(
+            "INSERT INTO ILSes VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                next_ils_id, runway_id, projection.frequency, projection.glide_slope_angle,
+                projection.latitude, projection.longitude, projection.category, projection.ident,
+                projection.localizer_course, projection.crossing_height, 1, projection.elevation_feet,
+            ),
+        )
+        existing.add(identity)
+        next_ils_id += 1
+        inserted += 1
+    return {"ilses_inserted": inserted, "ils_rejections": rejected}
+
+
+def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, object]:
     airport_ids: dict[str, int] = {}
     existing_airports = dict(connection.execute("SELECT ICAO, ID FROM Airports"))
     inserted_airports: set[str] = set()
@@ -560,6 +645,11 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
     navaid_additions = missing_navaids(connection, model.navaids)
     navaids = _insert_navaids(connection, model.navaids)
     counts = {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways, "navaids_inserted": navaids}
+    if model.ilses:
+        counts.update(_insert_ilses(
+            connection, model,
+            {model.airports[key].icao for key in inserted_airports},
+        ))
     if model.terminal_waypoints or model.waypoints or model.navaids:
         counts.update(_insert_waypoints(connection, model, navaid_additions))
     if model.procedure_segments:
@@ -581,16 +671,21 @@ def convert(official_navdata: Path, model: NavModel, output: Path, reference: Pa
             counts = _insert_model(connection, model)
             connection.commit()
             connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        terminal_rejections = counts.pop("terminal_procedure_rejections")
-        holding_rejections = counts.pop("terminal_holding_rejections")
-        incomplete = bool(model.rejected_procedures or model.rejected_records or terminal_rejections or holding_rejections)
-        if (terminal_rejections or holding_rejections) and not allow_incomplete:
-            raise ConversionBlocked(f"terminal projection rejected {len(terminal_rejections)} procedures and {len(holding_rejections)} holding legs")
+        terminal_rejections = counts.pop("terminal_procedure_rejections", [])
+        holding_rejections = counts.pop("terminal_holding_rejections", [])
+        ils_rejections = counts.pop("ils_rejections", [])
+        incomplete = bool(model.rejected_procedures or model.rejected_records or terminal_rejections or holding_rejections or ils_rejections)
+        if (terminal_rejections or holding_rejections or ils_rejections) and not allow_incomplete:
+            raise ConversionBlocked(
+                f"terminal projection rejected {len(terminal_rejections)} procedures, "
+                f"{len(holding_rejections)} holding legs and {len(ils_rejections)} ILS rows"
+            )
         report = {"status": "incomplete" if incomplete else "candidate", "test_build": True, "deployable": not incomplete,
                   "profile": profile["config"], "counts": counts, "rejected_procedures": [asdict(item) for item in model.rejected_procedures],
                   "rejected_records": [asdict(item) for item in model.rejected_records],
                   "terminal_procedure_rejections": terminal_rejections,
                   "terminal_holding_rejections": holding_rejections,
+                  "ils_rejections": ils_rejections,
                   "terminal_waypoint_evidence": len(model.terminal_waypoints),
                   "terminal_database_chart_evidence": len(model.procedure_charts),
                   "terminal_database_leg_evidence": sum(len(chart.terminal_legs) for chart in model.procedure_charts),

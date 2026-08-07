@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _insert_model, _insert_terminal_procedures, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
-from navdata_converter.model import Airport, ChartTerminalLeg, Navaid, NavModel, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.model import Airport, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
 def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path):
@@ -71,6 +71,59 @@ def test_clears_only_china_airport_domain_in_foreign_key_order(tmp_path):
 def test_fenix_navaid_frequency_uses_observed_bcd_contract():
     assert encode_frequency(112.4, "VOR") == 0x01124000
     assert encode_frequency(495, "NDB") == 0x04950000
+
+
+def test_projects_complete_ad219_ils_using_observed_fenix_units():
+    source = SourceRef("Terminal/ZBCF/赤峰玉龙.pdf", page=12, sha256="hash")
+    ils = Ils("ZBCF", "21", "ICF", 108.5, "I", 42.1436666667, 118.8319722222, 212.0, 3.2, 15.0, 42.1684, 118.8440, 42.1684, 118.8439, 616.0, source)
+
+    assert project_ad219_ils(ils).__dict__ == {
+        "frequency": 0x01085000, "glide_slope_angle": 3.2,
+        "latitude": 42.1436666667, "longitude": 118.8319722222,
+        "category": "1", "ident": "ICF", "localizer_course": 212.0,
+        "crossing_height": "49", "elevation_feet": 2021,
+    }
+
+
+def test_inserts_only_complete_source_backed_ils_rows(tmp_path):
+    connection = sqlite3.connect(tmp_path / "ilses.db3")
+    connection.executescript("""
+        CREATE TABLE Airports (ID INTEGER, ICAO TEXT);
+        CREATE TABLE Runways (ID INTEGER, AirportID INTEGER, Ident TEXT);
+        CREATE TABLE ILSes (ID INTEGER, RunwayID INTEGER, Freq INTEGER, GsAngle REAL, Latitude REAL, Longtitude REAL, Category TEXT, Ident TEXT, LocCourse REAL, CrossingHeight TEXT, HasDme INTEGER, Elevation INTEGER);
+        INSERT INTO Airports VALUES (10, 'ZBCF');
+        INSERT INTO Runways VALUES (20, 10, '21');
+    """)
+    source = SourceRef("Terminal/ZBCF/赤峰玉龙.pdf", page=12, sha256="hash")
+    complete = Ils("ZBCF", "21", "ICF", 108.5, "I", 42.1436666667, 118.8319722222, 212.0, 3.2, 15.0, 42.1684, 118.8440, 42.1684, 118.8439, 616.0, source)
+    missing_dme = Ils("ZBCF", "21", "BAD", 108.7, "I", 42.0, 118.0, 212.0, 3.0, 15.0, None, None, None, None, None, source)
+
+    result = _insert_ilses(connection, NavModel(tmp_path, ilses=[complete, missing_dme]))
+
+    assert result["ilses_inserted"] == 1
+    assert result["ils_rejections"] == [{"airport": "ZBCF", "runway": "21", "ident": "BAD", "reason": "ILS ZBCF/21/BAD missing DME elevation", "source": source.__dict__}]
+    assert connection.execute("SELECT RunwayID, Freq, GsAngle, Latitude, Longtitude, Category, Ident, LocCourse, CrossingHeight, HasDme, Elevation FROM ILSes").fetchall() == [
+        (20, 0x01085000, 3.2, 42.1436666667, 118.8319722222, "1", "ICF", 212.0, "49", 1, 2021),
+    ]
+
+
+def test_ils_projection_can_be_limited_to_new_airports(tmp_path):
+    connection = sqlite3.connect(tmp_path / "limited-ilses.db3")
+    connection.executescript("""
+        CREATE TABLE Airports (ID INTEGER, ICAO TEXT);
+        CREATE TABLE Runways (ID INTEGER, AirportID INTEGER, Ident TEXT);
+        CREATE TABLE ILSes (ID INTEGER, RunwayID INTEGER, Freq INTEGER, GsAngle REAL, Latitude REAL, Longtitude REAL, Category TEXT, Ident TEXT, LocCourse REAL, CrossingHeight TEXT, HasDme INTEGER, Elevation INTEGER);
+        INSERT INTO Airports VALUES (10, 'ZBCF'), (11, 'ZBAA');
+        INSERT INTO Runways VALUES (20, 10, '21'), (21, 11, '01');
+    """)
+    source = SourceRef("fixture.pdf", page=1, sha256="hash")
+    def row(airport, runway, ident):
+        return Ils(airport, runway, ident, 108.5, "I", 42.1, 118.8, 212.0, 3.0, 15.0, 42.2, 118.9, 42.2, 118.9, 616.0, source)
+
+    result = _insert_ilses(connection, NavModel(tmp_path, ilses=[row("ZBCF", "21", "ICF"), row("ZBAA", "01", "INJ")]), {"ZBCF"})
+
+    assert result == {"ilses_inserted": 1, "ils_rejections": []}
+    assert connection.execute("SELECT RunwayID, Ident FROM ILSes").fetchall() == [(20, "ICF")]
 
 
 def test_fenix_procedure_name_matches_observed_database_labels():
