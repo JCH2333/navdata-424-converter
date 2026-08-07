@@ -164,7 +164,7 @@ def _runway_key(value: object) -> str:
     return runway
 
 
-def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[str, object]:
+def inspect_approach_chart_coverage(model: NavModel, official: Path, reference: Path) -> dict[str, object]:
     """Compare indexed NAIP approach-chart runways to Fenix Proc=3 rows.
 
     It is a source-evidence diagnostic only: an index page identifies a runway
@@ -178,12 +178,27 @@ def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[st
         for runway in chart.runways
         if _runway_key(runway)
     }
-    database = _db(reference)
-    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
-        rows = connection.execute("SELECT ICAO, Rwy, Name FROM Terminals WHERE Proc = 3").fetchall()
+    official_database, database = _db(official), _db(reference)
+    with sqlite3.connect(f"file:{official_database}?mode=ro", uri=True) as base, sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+        columns = _columns(connection, "Terminals")
+        quoted = ", ".join(f'"{column}"' for column in columns)
+        id_index = columns.index("ID")
+        proc_index = columns.index("Proc")
+        base_rows = {row[id_index]: row for row in base.execute(f"SELECT {quoted} FROM Terminals")}
+        raw_rows = list(connection.execute(f"SELECT {quoted} FROM Terminals"))
+        delta_ids = {
+            row[id_index]
+            for row in raw_rows
+            if row[id_index] not in base_rows or row != base_rows[row[id_index]]
+        }
+        rows = [
+            (row[columns.index("ICAO")], row[columns.index("Rwy")], row[columns.index("Name")], row[id_index])
+            for row in raw_rows
+            if str(row[proc_index]) == "3"
+        ]
     reference_pairs = {
         (str(icao).upper(), _runway_key(runway))
-        for icao, runway, _ in rows
+        for icao, runway, _, _ in rows
         if str(icao).upper() in {airport for airport, _ in evidence} and _runway_key(runway)
     }
     name_candidates = {
@@ -194,12 +209,12 @@ def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[st
     }
     reference_names = {
         (str(icao).upper(), _runway_key(runway), str(name or "").upper())
-        for icao, runway, name in rows
+        for icao, runway, name, _ in rows
         if str(icao).upper() in {airport for airport, _ in evidence} and _runway_key(runway)
     }
     non_runway_names = [
         {"airport": str(icao).upper(), "runway": _runway_key(runway), "name": str(name or "")}
-        for icao, runway, name in rows
+        for icao, runway, name, _ in rows
         if str(icao).upper() in {airport for airport, _ in evidence}
         and _runway_key(runway)
         and str(name or "").upper() != f"R{_runway_key(runway)}"
@@ -208,6 +223,11 @@ def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[st
         return {"airport": pair[0], "runway": pair[1]}
     def name_payload(item: tuple[str, str, str]) -> dict[str, str]:
         return {"airport": item[0], "runway": item[1], "name": item[2]}
+    delta_names = {
+        (str(icao).upper(), _runway_key(runway), str(name or "").upper())
+        for icao, runway, name, identifier in rows
+        if identifier in delta_ids and str(icao).upper() in {airport for airport, _ in evidence} and _runway_key(runway)
+    }
     return {
         "evidence_pages": len(charts),
         "evidence_pairs": len(evidence),
@@ -222,4 +242,7 @@ def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[st
         "matched_names": len(name_candidates & reference_names),
         "candidate_names_without_reference": [name_payload(item) for item in sorted(name_candidates - reference_names)[:20]],
         "reference_names_without_candidate": [name_payload(item) for item in sorted(reference_names - name_candidates)[:20]],
+        "delta_names": len(delta_names),
+        "matched_delta_names": len(name_candidates & delta_names),
+        "delta_names_without_candidate": [name_payload(item) for item in sorted(delta_names - name_candidates)[:20]],
     }

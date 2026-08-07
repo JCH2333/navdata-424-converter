@@ -64,20 +64,18 @@ def test_terminal_coordinate_coverage_requires_matching_ident_and_location(tmp_p
 
 
 def test_approach_chart_coverage_compares_indexed_runways_to_fenix_proc_three(tmp_path):
+    official = tmp_path / "official.db3"
     reference = tmp_path / "reference.db3"
-    with sqlite3.connect(reference) as connection:
-        connection.execute("CREATE TABLE Terminals (ID INTEGER, Proc INTEGER, ICAO TEXT, Rwy TEXT, Name TEXT)")
-        connection.executemany("INSERT INTO Terminals VALUES (?, ?, ?, ?, ?)", [
-            (1, 3, "ZYYK", "04", "R04"),
-            (2, 3, "ZYYK", "22", "R22"),
-            (3, 2, "ZYYK", "04", "P8909D"),
-        ])
+    for database, rows in ((official, [(2, 3, "ZYYK", "22", "R22")]), (reference, [(1, 3, "ZYYK", "04", "R04"), (2, 3, "ZYYK", "22", "R22")])):
+        with sqlite3.connect(database) as connection:
+            connection.execute("CREATE TABLE Terminals (ID INTEGER, Proc INTEGER, ICAO TEXT, Rwy TEXT, Name TEXT)")
+            connection.executemany("INSERT INTO Terminals VALUES (?, ?, ?, ?, ?)", rows)
     source = SourceRef("Terminal/ZYYK/ZYYK-5A.pdf", 1, 1, "hash")
     model = NavModel(Path("."), procedure_charts=[
         ProcedureChart("ZYYK", "ZYYK-5A.pdf", 1, "instrument-approach-index", "ILS Z RWY04", "text", (), ("04",), (), (), (), source),
     ])
 
-    report = inspect_approach_chart_coverage(model, reference)
+    report = inspect_approach_chart_coverage(model, official, reference)
 
     assert report == {
         "evidence_pages": 1,
@@ -96,4 +94,7 @@ def test_approach_chart_coverage_compares_indexed_runways_to_fenix_proc_three(tm
             {"airport": "ZYYK", "runway": "04", "name": "R04"},
             {"airport": "ZYYK", "runway": "22", "name": "R22"},
         ],
+        "delta_names": 1,
+        "matched_delta_names": 0,
+        "delta_names_without_candidate": [{"airport": "ZYYK", "runway": "04", "name": "R04"}],
     }

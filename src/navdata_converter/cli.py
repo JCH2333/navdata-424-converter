@@ -80,9 +80,10 @@ def main(argv: list[str] | None = None) -> int:
     )) or 0)
     approach_coverage = commands.add_parser("inspect-approach-chart-coverage")
     approach_coverage.add_argument("--naip-root", required=True)
+    approach_coverage.add_argument("--official-navdata", required=True)
     approach_coverage.add_argument("--reference", required=True)
     approach_coverage.set_defaults(handler=lambda a: print(json.dumps(
-        inspect_approach_chart_coverage(load_naip(Path(a.naip_root)), Path(a.reference)), ensure_ascii=False, indent=2
+        inspect_approach_chart_coverage(load_naip(Path(a.naip_root)), Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2
     )) or 0)
     args = parser.parse_args(argv)
     return args.handler(args)
