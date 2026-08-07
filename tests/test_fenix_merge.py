@@ -337,6 +337,25 @@ def test_terminal_procedure_resolution_falls_back_to_unique_designated_point(tmp
     assert resolutions == {("ZYBA", "P105"): (1, 44.81, 123.075)}
 
 
+def test_terminal_procedure_resolution_falls_back_to_unique_navaid(tmp_path):
+    connection = sqlite3.connect(tmp_path / "navaid-terminal-fallback.db3")
+    connection.execute("CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Latitude REAL, Longtitude REAL)")
+    connection.execute("INSERT INTO Waypoints VALUES (1, 'W', 28.21990278, 113.21789722)")
+    source = SourceRef("NDB.csv", 71)
+    model = NavModel(
+        Path("."),
+        navaids=[Navaid("navaid", "W", "NDB", "GUTANG", 28.22, 113.21777778, 388.0, -4.3, 0, "ZG", source)],
+        procedure_segments=[ProcedureSegment(
+            "ZGHA", "GUS-1W", "离场", "18", "", (ChartTerminalLeg("GUS-1W", "18", "TF", "W", "TF W", "离场"),), source,
+        )],
+    )
+
+    resolutions, failures = _terminal_waypoint_resolutions(connection, model)
+
+    assert failures == {}
+    assert resolutions == {("ZGHA", "W"): (1, 28.21990278, 113.21789722)}
+
+
 def test_waypoint_phases_map_shared_terminal_and_designated_source_ids(tmp_path):
     connection = sqlite3.connect(tmp_path / "source-phase-maps.db3")
     connection.executescript("""

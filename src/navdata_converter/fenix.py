@@ -192,6 +192,9 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
     designated_points: dict[str, set[tuple[float, float]]] = {}
     for point in model.waypoints:
         designated_points.setdefault(point.ident, set()).add((round(point.latitude, 9), round(point.longitude, 9)))
+    navaid_points: dict[str, set[tuple[float, float]]] = {}
+    for navaid in model.navaids:
+        navaid_points.setdefault(navaid.ident, set()).add((round(navaid.latitude, 9), round(navaid.longitude, 9)))
     required_keys = {
         (segment.airport, ident)
         for segment in model.procedure_segments
@@ -228,6 +231,8 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
         locations = source_points.get(key)
         if locations is None:
             locations = designated_points.get(ident)
+        if locations is None:
+            locations = navaid_points.get(ident)
         if locations is None:
             failures[key] = f"terminal fix {airport}/{ident} has no source coordinate evidence"
             continue

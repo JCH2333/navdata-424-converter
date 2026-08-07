@@ -158,3 +158,9 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZLXH/ZLXH-4G.pdf` 的 `OMBON-9D` 行在 PDF 对象流中被交错为 `RF[XHC26,TF 5] XH678XH606`，但原生文字对象的同一基线坐标明确给出 `RF[XHC26, 5] XH678 R MAX230 RNP0.3`，下一基线为 `TF XH606`。
 - 解决方式：`_positioned_database_text` 以 2.5 点基线容差分组 PDF words，再按 x 坐标重建行；只恢复表中可见文本，不推断航段语义或读取参考库。`test_rebuilds_interleaved_database_rf_table_row_from_word_positions` 覆盖该对象流交错模式。
 - 验证：重新解析 2608 PDF/CSV 后，数据库编码程序段从 4853 增至 4878；完整候选的普通终端程序拒绝从 13 降至 4，写入程序从 1984 增至 2004、航段从 9327 增至 9776。`integrity_check=ok`，全量 pytest 85 passed。候选 SHA-256 `43c9690e6831bfa479f1fa1c1f593f6ca866f0be2b501e3fb90228abebedc03f` 仍不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，因此仍为不可部署的测试候选。
+
+## 2026-08-08 终端程序台站坐标后备
+
+- 适用范围：Fenix 2608 终端程序固定点解析。`ZGHA/GUS-1W` 的固定点 `W` 不在终端坐标页或 `DESIGNATED_POINT.csv`，但 `NDB.csv` 第 71 行明确给出谷塘台 `W` 的坐标，候选库中存在唯一的同标识近距航点。
+- 解决方式：仅当本场终端坐标页和指定点均无该标识时，使用全局唯一的 VOR/NDB 来源坐标；多坐标台站仍按现有歧义规则拒绝。`test_terminal_procedure_resolution_falls_back_to_unique_navaid` 覆盖该优先级。
+- 验证：使用已重新解析的 PDF/CSV 模型生成候选后，`GUS-1W` 被投影，普通终端程序拒绝从 4 降至 3，程序为 2005、航段为 9790，`integrity_check=ok`。候选仍不等于参考，禁止部署或发布。
