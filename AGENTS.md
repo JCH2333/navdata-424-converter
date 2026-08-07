@@ -147,3 +147,8 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 ## 2026-08-08 ILS 来源缺口抽查
 
 - 对拒绝的 `ZBXH/IYR` 直接读取 `Terminal\\ZBXH\\锡林浩特.pdf` AD 2.19 第 15 页原生文本与文字坐标：LOC 22 给出识别码、109.3 MHz 与坐标；GP 22 给出 3 度下滑角和 RDH 16.7 m；DME 22 给出标高 1013 m，但该页没有 LOC 磁航向。故 `missing LOC course` 是 2608 PDF 内容缺口而非解析正则遗漏，不能由跑道方位或参考 ILS 回填。
+
+## 2026-08-08 航路输入与参考差异
+
+- `RTE_SEG.csv` 已解析为 1354 条航路、4446 条来源航段，但 Fenix 适配器尚未投影。与只读参考相对官方模板新增的 478 条航路比较，2608 CSV 有 483 条官方缺失航路；有向航段集合精确一致为 0 条，只有 185 条存在至少一条同向重叠航段。CSV 独有 3 条航路，参考独有 `P777`、`UP777` 两条。
+- 已验证样本：CSV 的 `H118` 仅为 `PAN -> NIXAS`，参考的 H118 为 `PAN <-> SADGO`；CSV 的 `FANS-1` 为 `NIVUX -> XIC -> LEVBA`，参考为 `JHG <-> POXUB` 与 `JHG <-> SADAV`。因此不能把参考航段复制或反推为 CSV 映射；按 CSV 写入会产生来源正确但不等于本地参考的航路内容。该输入差异阻止在“CSV/PDF 唯一输入”约束下实现参考的航路字节一致，除非取得与参考一致的原始航路来源或用户明确改变比较目标。
