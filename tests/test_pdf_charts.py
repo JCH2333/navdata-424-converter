@@ -51,6 +51,24 @@ def test_extracts_ad219_localizer_when_category_and_longitude_follow_page_break(
     ]
 
 
+def test_extracts_ad219_localizer_with_two_or_three_fractional_frequency_digits():
+    text = """
+    LOC 04 ILS CAT I IXP 111.55 MHz N283021.8 E1093149.7 045°MAG
+    GP 04 332.75 MHz N282921.3 E1093043.6 3°下滑角 RDH16 m
+    DME 04 IXP CH 52Y (111.55 MHz) N282921.3 E1093043.6 714m 与 GP 04 合装
+    LOC 22 ILS CAT I IXF 108.950 MHz N282903.2 E1093031.6 225°MAG
+    GP 22 334.85 MHz N283003.8 E1093137.7 3°下滑角 RDH16.5 m
+    DME 22 IXF CH 40Y (108.950 MHz) N283003.8 E1093137.7 712m 与 GP 22 合装
+    """
+
+    extracted = extract_ad219_ils(text, "ZGXX", SourceRef("Terminal/ZGXX/湘西边城.pdf", 17, 17, "hash"))
+
+    assert [(item.runway, item.ident, item.frequency_mhz) for item in extracted] == [
+        ("04", "IXP", 111.55),
+        ("22", "IXF", 108.95),
+    ]
+
+
 def test_ad219_extractor_continues_across_headerless_table_pages(monkeypatch, tmp_path):
     airport = tmp_path / "ZBHD"
     airport.mkdir()

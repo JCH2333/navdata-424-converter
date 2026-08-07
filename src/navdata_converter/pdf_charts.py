@@ -67,15 +67,14 @@ _AIP_DMS_COORDINATE = re.compile(
 )
 _AIP_LOC = re.compile(
     r"\bLOC\s*(?P<runway>\d{2}[LRC]?)\s+(?:ILS\s*)?(?:CAT\s*(?P<category>I{1,3})\s+)?"
-    r"(?P<ident>[A-Z0-9]{2,5})\s+(?P<frequency>\d{3}\.\d)\s*MHz\s*"
-    r"(?P<coordinate>N\s*\d{6}(?:\.\d+)?\s*E\s*\d{7}(?:\.\d+)?)(?P<tail>.{0,220})",
+    r"(?P<ident>[A-Z0-9]{2,5})\s+(?P<frequency>\d{3}\.\d{1,3})\s*MHz\s*"
+    r"(?P<coordinate>N\s*\d{6}(?:\.\d+)?\s*E\s*\d{7}(?:\.\d+)?)",
     re.IGNORECASE | re.DOTALL,
 )
 _AIP_SPLIT_LOC = re.compile(
     r"\bLOC\s*(?P<runway>\d{2}[LRC]?)\s+(?P<ident>[A-Z0-9]{2,5})\s+"
-    r"(?P<frequency>\d{3}\.\d)\s*MHz\s*(?P<latitude>N\s*\d{6}(?:\.\d+)?)"
-    r".{0,960}?ILS\s*CAT\s*(?P<category>I{1,3})\s*(?P<longitude>E\s*\d{7}(?:\.\d+)?)"
-    r"(?P<tail>.{0,220})",
+    r"(?P<frequency>\d{3}\.\d{1,3})\s*MHz\s*(?P<latitude>N\s*\d{6}(?:\.\d+)?)"
+    r".{0,960}?ILS\s*CAT\s*(?P<category>I{1,3})\s*(?P<longitude>E\s*\d{7}(?:\.\d+)?)",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -107,7 +106,7 @@ def extract_ad219_ils(text: str, airport: str, source: SourceRef) -> tuple[Ils, 
     for localizer in matches:
         coordinate = localizer.groupdict().get("coordinate") or f"{localizer['latitude']} {localizer['longitude']}"
         localizer_latitude, localizer_longitude = _parse_aip_dms_coordinate(coordinate)
-        tail = localizer["tail"]
+        tail = text[localizer.end():localizer.end() + 220]
         course_match = re.search(r"(?P<course>\d{3})\s*[°º]\s*MAG", tail, re.IGNORECASE)
         runway = localizer["runway"].upper()
         ident = localizer["ident"].upper()
@@ -115,10 +114,10 @@ def extract_ad219_ils(text: str, airport: str, source: SourceRef) -> tuple[Ils, 
         if identity in seen:
             continue
         seen.add(identity)
-        # ``tail`` starts immediately after the localizer coordinate.  Reuse
-        # that offset so optional GP/DME rows still remain visible even when
-        # the bounded localizer context consumed them.
-        remainder = text[localizer.start("tail"):]
+        # Start GP/DME matching immediately after the localizer.  The LOC
+        # pattern itself intentionally consumes no look-ahead text, so a
+        # densely printed first ILS cannot hide the following localizer.
+        remainder = text[localizer.end():]
         dme = re.search(
             rf"\bDME\s*{re.escape(runway)}\s+{re.escape(ident)}\b.{{0,180}}?"
             r"(?P<coordinate>N\s*\d{6}(?:\.\d+)?\s*E\s*\d{7}(?:\.\d+)?)(?P<tail>.{0,120})",

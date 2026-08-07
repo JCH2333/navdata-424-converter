@@ -192,8 +192,13 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
 def encode_frequency(value: float, kind: str) -> int:
     """Encode NAIP radio values into Fenix's observed BCD integer format."""
     if kind == "VOR":
-        digits = f"{value:.1f}".replace(".", "")
-        shift = 12
+        # Fenix stores the printed VHF digits as left-aligned BCD.  Most
+        # channels have one decimal place, but AD 2.19 also publishes 25 kHz
+        # and 5 kHz values such as 111.55 and 108.950.
+        digits = f"{value:.3f}".rstrip("0").replace(".", "")
+        shift = 4 * (7 - len(digits))
+        if shift < 0:
+            raise ValueError(f"invalid VHF frequency: {value!r}")
     elif kind == "NDB":
         digits = str(round(value))
         shift = 16

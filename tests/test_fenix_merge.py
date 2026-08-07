@@ -70,6 +70,8 @@ def test_clears_only_china_airport_domain_in_foreign_key_order(tmp_path):
 
 def test_fenix_navaid_frequency_uses_observed_bcd_contract():
     assert encode_frequency(112.4, "VOR") == 0x01124000
+    assert encode_frequency(111.55, "VOR") == 0x01115500
+    assert encode_frequency(108.950, "VOR") == 0x01089500
     assert encode_frequency(495, "NDB") == 0x04950000
 
 
