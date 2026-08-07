@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.coverage
+
+# Navigation inputs, outputs, and SQLite sidecars are local-only.
+*.db3
+*.s3db
+*-wal
+*-shm
+*.pdf
+*.csv
+/input/
+/output/
+/backups/
+/diagnostics/
+/dist/
+/external-test-packages/
+
+# Local configuration and editor files.
+.env
+.vscode/
+.idea/
+*.log
+*.zip

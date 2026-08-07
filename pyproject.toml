@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "navdata-424-converter"
+version = "0.1.0"
+description = "424/NAIP 到 Fenix 导航数据测试版转换器"
+requires-python = ">=3.11"
+dependencies = ["pypdf>=5.0"]
+
+[project.scripts]
+navdata-424 = "navdata_converter.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
