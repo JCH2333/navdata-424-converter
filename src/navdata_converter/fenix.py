@@ -156,13 +156,32 @@ def resolve_terminal_waypoint(
     if len(source_points) != 1:
         raise ConversionBlocked(f"terminal fix {airport}/{ident} has {len(source_points)} source locations")
     latitude, longitude = next(iter(source_points))
-    rows = [
-        row for row in connection.execute("SELECT ID, Latitude, Longtitude FROM Waypoints WHERE Ident=?", (ident,))
-        if _distance_nm(latitude, longitude, row[1], row[2]) < 0.02
-    ]
+    rows = _resolve_terminal_target_rows(
+        latitude, longitude,
+        list(connection.execute("SELECT ID, Latitude, Longtitude FROM Waypoints WHERE Ident=?", (ident,))),
+    )
     if len(rows) != 1:
         raise ConversionBlocked(f"terminal fix {airport}/{ident} has {len(rows)} target waypoint matches")
     return int(rows[0][0]), float(rows[0][1]), float(rows[0][2])
+
+
+def _resolve_terminal_target_rows(
+    latitude: float,
+    longitude: float,
+    candidates: list[tuple[int, float, float]],
+) -> list[tuple[int, float, float]]:
+    """Prefer one exact terminal-coordinate-page position over nearby points."""
+    exact = [
+        row for row in candidates
+        if math.isclose(latitude, row[1], abs_tol=1e-8)
+        and math.isclose(longitude, row[2], abs_tol=1e-8)
+    ]
+    if len(exact) == 1:
+        return exact
+    return [
+        row for row in candidates
+        if _distance_nm(latitude, longitude, row[1], row[2]) < 0.02
+    ]
 
 
 def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavModel) -> tuple[dict[tuple[str, str], tuple[int, float, float]], dict[tuple[str, str], str]]:
@@ -181,10 +200,7 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
             failures[key] = f"terminal fix {airport}/{ident} has {len(locations)} source locations"
             continue
         latitude, longitude = next(iter(locations))
-        matches = [
-            row for row in targets.get(ident, [])
-            if _distance_nm(latitude, longitude, row[1], row[2]) < 0.02
-        ]
+        matches = _resolve_terminal_target_rows(latitude, longitude, targets.get(ident, []))
         if len(matches) != 1:
             failures[key] = f"terminal fix {airport}/{ident} has {len(matches)} target waypoint matches"
             continue

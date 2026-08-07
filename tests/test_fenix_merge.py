@@ -275,6 +275,24 @@ def test_resolves_terminal_fix_only_when_source_and_target_are_both_unique(tmp_p
         resolve_terminal_waypoint(connection, model, "ZYYK", "MISSING")
 
 
+def test_terminal_fix_prefers_one_exact_coordinate_over_nearby_collision(tmp_path):
+    connection = sqlite3.connect(tmp_path / "exact-terminal-waypoint.db3")
+    connection.execute("CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Latitude REAL, Longtitude REAL)")
+    connection.executemany(
+        "INSERT INTO Waypoints VALUES (?,?,?,?)",
+        [
+            (1, "P111", 46.56666666666667, 124.90833333333333),
+            (2, "P111", 46.566944444444445, 124.90833333333335),
+        ],
+    )
+    source = SourceRef("Terminal/ZYDQ/ZYDQ-4Y01.pdf", page=1, sha256="hash")
+    model = NavModel(Path("."), terminal_waypoints=[
+        TerminalWaypoint("terminal", "ZYDQ", "P111", 46.56666666666667, 124.90833333333333, source),
+    ])
+
+    assert resolve_terminal_waypoint(connection, model, "ZYDQ", "P111") == (1, 46.56666666666667, 124.90833333333333)
+
+
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():
     latitude, longitude = runway_threshold(40.5425, 122.3586111111111, 29, 8202)
 

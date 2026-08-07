@@ -118,3 +118,8 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 
 - 对 `output\\candidate-2608-database-pages` 与只读参考按 `(机场 ICAO, 跑道标识)` 比较：候选仅多出 `ZBAL 14/32` 两条；374 条公共跑道的 `Latitude`、`Longtitude` 和物理 ID 不同，364 条 `TrueHeading`、48 条长度、10 条宽度、22 条道面和 68 条标高不同。
 - `RWY_DIRECTION.csv` 只提供整数 `VAL_TRUE_BRG`、标高和位移距离，未提供阈值坐标；`RWY.csv` 只提供长度、宽度和道面。终端机场图所见 ARP/跑道图也未提供可结构化的阈值坐标。当前阈值计算是基于来源 ARP、长度和方位的诊断近似，不能复原参考的小数方位或阈值坐标，不能以参考字段或 ICAO 特例回填。该缺口必须在取得 CSV/PDF 内的高精度跑道来源前保持显式未完成。
+
+## 2026-08-08 终端精确坐标解析
+
+- 终端固定点原先仅按 0.02 海里容差解析目标 `Waypoints`。当坐标页固定点与同标识的指定点或台站航点相距很近时，会产生多个候选并拒绝，即使其中一个候选精确等于 PDF 打印坐标。现先选择唯一的精确坐标匹配；没有唯一精确匹配时继续按原近距规则处理，两个精确同址候选仍拒绝。
+- 使用 `ZYDQ/P111` 的最小 SQLite fixture 验证：来源坐标与一条目标精确相同、另一条仅近距时，解析器选择精确行，不读取参考库。完整候选 `output\\candidate-2608-terminal-exact` 的终端程序由 1414 增至 1498、航段由 6601 增至 6997；终端程序拒绝由 583 降至 499，保持拒绝 292。`integrity_check=ok`；Terminals 为 98602/101618，TerminalLegs 与 TerminalLegsEx 均为 821843/845147，候选 SHA-256 `22459e89062ed7b92b39b2501b7635f8c4a1cfdb1b0ac5053da73511794a279d`，仍不得部署或发布。
