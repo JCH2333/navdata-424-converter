@@ -1,4 +1,4 @@
-from navdata_converter.source import _feet, _rows, _surface, parse_dms, romanize_name
+from navdata_converter.source import _feet, _rows, _surface, navaid_country, parse_dms, romanize_name
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -30,3 +30,8 @@ def test_naip_runway_elevations_use_val_elev_not_zero_threshold_field():
 def test_romanize_name_matches_observed_fenix_spelling():
     assert romanize_name("\u970d\u6797\u90ed\u52d2") == "HUOLINGUOLEI"
     assert romanize_name("DGL") == "DGL"
+
+
+def test_navaid_country_prefers_serviced_airport_and_falls_back_to_fir():
+    assert navaid_country("ZBHZ", "") == "ZB"
+    assert navaid_country("", "\u6c88\u9633\u60c5\u62a5\u533a") == "ZY"

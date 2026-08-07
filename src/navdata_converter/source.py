@@ -7,7 +7,20 @@ from pathlib import Path
 
 from pypinyin import lazy_pinyin
 
-from .model import Airport, AirwayLeg, NavModel, Navaid, RejectedProcedure, Runway, SourceRef, Waypoint, is_china_icao
+from .model import CN_PREFIXES, Airport, AirwayLeg, NavModel, Navaid, RejectedProcedure, Runway, SourceRef, Waypoint, is_china_icao
+
+
+_FIR_COUNTRIES = {
+    "\u4e09\u4e9a\u60c5\u62a5\u533a": "ZJ",
+    "\u4e0a\u6d77\u60c5\u62a5\u533a": "ZS",
+    "\u4e4c\u9c81\u6728\u9f50\u60c5\u62a5\u533a": "ZW",
+    "\u5170\u5dde\u60c5\u62a5\u533a": "ZL",
+    "\u5317\u4eac\u60c5\u62a5\u533a": "ZB",
+    "\u5e7f\u5dde\u60c5\u62a5\u533a": "ZG",
+    "\u6606\u660e\u60c5\u62a5\u533a": "ZP",
+    "\u6b66\u6c49\u60c5\u62a5\u533a": "ZH",
+    "\u6c88\u9633\u60c5\u62a5\u533a": "ZY",
+}
 
 
 def parse_dms(value: str) -> float:
@@ -78,6 +91,17 @@ def romanize_name(value: str) -> str:
     return "".join(lazy_pinyin(value or "")).upper()
 
 
+def navaid_country(serviced_airport: str, fir: str) -> str:
+    airport_prefix = (serviced_airport or "").strip().upper()[:2]
+    if airport_prefix in CN_PREFIXES:
+        return airport_prefix
+    fir_name = (fir or "").split("\uff0c", maxsplit=1)[0].strip()
+    try:
+        return _FIR_COUNTRIES[fir_name]
+    except KeyError as error:
+        raise ValueError(f"unmapped navaid FIR: {fir!r}") from error
+
+
 def load_naip(root: Path) -> NavModel:
     """Load only structured data; PDFs are inspected separately and never guessed."""
     root = root.resolve()
@@ -112,7 +136,8 @@ def load_naip(root: Path) -> NavModel:
                 model.navaids.append(Navaid(row["SIGNIFICANT_POINT_ID"], row.get("CODE_ID") or "", kind,
                     row.get("TXT_NAME") or "", parse_dms(row.get("GEO_LAT_ACCURACY") or ""),
                     parse_dms(row.get("GEO_LONG_ACCURACY") or ""), _float(row.get("VAL_FREQ") or "0") / divisor,
-                    _float(row.get("VAL_MAG_VAR") or "0"), _number(row.get("VAL_ELEV") or "0"), SourceRef(filename, row_number)))
+                    _float(row.get("VAL_MAG_VAR") or "0"), _number(row.get("VAL_ELEV") or "0"),
+                    navaid_country(row.get("SERVICED_AIRPORT") or "", row.get("CODE_FIR") or ""), SourceRef(filename, row_number)))
             except ValueError:
                 continue
     for row_number, row in enumerate(_rows(root / "DESIGNATED_POINT.csv"), start=2):

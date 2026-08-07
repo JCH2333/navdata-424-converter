@@ -56,6 +56,7 @@ class Navaid:
     frequency: float
     magnetic_variation: float
     elevation_ft: int
+    country: str
     source: SourceRef
 
 
