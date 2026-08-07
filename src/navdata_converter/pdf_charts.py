@@ -71,6 +71,13 @@ _AIP_LOC = re.compile(
     r"(?P<coordinate>N\s*\d{6}(?:\.\d+)?\s*E\s*\d{7}(?:\.\d+)?)(?P<tail>.{0,220})",
     re.IGNORECASE | re.DOTALL,
 )
+_AIP_SPLIT_LOC = re.compile(
+    r"\bLOC\s*(?P<runway>\d{2}[LRC]?)\s+(?P<ident>[A-Z0-9]{2,5})\s+"
+    r"(?P<frequency>\d{3}\.\d)\s*MHz\s*(?P<latitude>N\s*\d{6}(?:\.\d+)?)"
+    r".{0,960}?ILS\s*CAT\s*(?P<category>I{1,3})\s*(?P<longitude>E\s*\d{7}(?:\.\d+)?)"
+    r"(?P<tail>.{0,220})",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def _parse_aip_dms_coordinate(value: str) -> tuple[float, float]:
@@ -92,12 +99,22 @@ def _parse_aip_dms_coordinate(value: str) -> tuple[float, float]:
 def extract_ad219_ils(text: str, airport: str, source: SourceRef) -> tuple[Ils, ...]:
     """Extract only explicitly printed AD 2.19 LOC/GP/DME facts."""
     result: list[Ils] = []
-    for localizer in _AIP_LOC.finditer(text):
-        localizer_latitude, localizer_longitude = _parse_aip_dms_coordinate(localizer["coordinate"])
+    matches = sorted(
+        (*_AIP_LOC.finditer(text), *_AIP_SPLIT_LOC.finditer(text)),
+        key=lambda item: (item.start(), item.end()),
+    )
+    seen: set[tuple[str, str, str, float, float]] = set()
+    for localizer in matches:
+        coordinate = localizer.groupdict().get("coordinate") or f"{localizer['latitude']} {localizer['longitude']}"
+        localizer_latitude, localizer_longitude = _parse_aip_dms_coordinate(coordinate)
         tail = localizer["tail"]
         course_match = re.search(r"(?P<course>\d{3})\s*[°º]\s*MAG", tail, re.IGNORECASE)
         runway = localizer["runway"].upper()
         ident = localizer["ident"].upper()
+        identity = (runway, ident, localizer["frequency"], localizer_latitude, localizer_longitude)
+        if identity in seen:
+            continue
+        seen.add(identity)
         # ``tail`` starts immediately after the localizer coordinate.  Reuse
         # that offset so optional GP/DME rows still remain visible even when
         # the bounded localizer context consumed them.
@@ -630,12 +647,33 @@ def extract_airport_ad219_ils(airport_directory: Path) -> list[Ils]:
             continue
         file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
         with pymupdf.open(pdf) as document:
+            in_ad219 = False
+            start_page: int | None = None
+            active_text: list[str] = []
             for page_number, page in enumerate(document, start=1):
                 text = page.get_text()
-                if "AD 2.19" not in text and "无线电导航和着陆设施" not in text:
+                if "AD 2.19" in text or "无线电导航和着陆设施" in text:
+                    if not in_ad219:
+                        start_page = page_number
+                        active_text.clear()
+                    in_ad219 = True
+                if not in_ad219:
                     continue
+                terminators = [position for marker in ("AD 2.20", "本场规定") if (position := text.find(marker)) >= 0]
+                ad219_text = text[:min(terminators)] if terminators else text
+                active_text.append(ad219_text)
+                if terminators:
+                    result.extend(extract_ad219_ils(
+                        "\n".join(active_text), airport,
+                        SourceRef(str(pdf), start_page, start_page, file_hash),
+                    ))
+                    in_ad219 = False
+                    start_page = None
+                    active_text.clear()
+            if in_ad219 and active_text:
                 result.extend(extract_ad219_ils(
-                    text, airport, SourceRef(str(pdf), page_number, page_number, file_hash),
+                    "\n".join(active_text), airport,
+                    SourceRef(str(pdf), start_page, start_page, file_hash),
                 ))
     return result
 

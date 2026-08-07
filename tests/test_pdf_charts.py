@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -34,6 +34,58 @@ def test_extracts_only_printed_ad219_localizer_glide_path_and_dme_fields():
     assert (ils.glide_slope_latitude, ils.glide_slope_longitude) == pytest.approx((42.168444444444445, 118.84397222222222))
     assert (ils.dme_latitude, ils.dme_longitude, ils.dme_elevation_meters) == pytest.approx((42.168444444444445, 118.84391666666667, 616.0))
     assert ils.source == SourceRef("Terminal/ZBCF/airport.pdf", 12, 12, "hash")
+
+
+def test_extracts_ad219_localizer_when_category_and_longitude_follow_page_break():
+    text = """
+    LOC 05 IHD 109.3 MHz N363204.6
+    ILS CAT I E1142612.1 距05号跑道末端 052°MAG
+    GP 05 332.0 MHz N363109.3 E1142453.5 3°下滑角 RDH15m
+    DME 05 IHD CH 30X (109.3 MHz) N363108.4 E1142451.4 78m 与 GP 05 合装
+    """
+
+    extracted = extract_ad219_ils(text, "ZBHD", SourceRef("Terminal/ZBHD/邯郸.pdf", 14, 14, "hash"))
+
+    assert [(item.runway, item.ident, item.frequency_mhz, item.localizer_course_magnetic, item.dme_elevation_meters) for item in extracted] == [
+        ("05", "IHD", 109.3, 52.0, 78.0),
+    ]
+
+
+def test_ad219_extractor_continues_across_headerless_table_pages(monkeypatch, tmp_path):
+    airport = tmp_path / "ZBHD"
+    airport.mkdir()
+    (airport / "邯郸.pdf").write_bytes(b"fixture")
+
+    class Page:
+        def __init__(self, text):
+            self.text = text
+
+        def get_text(self):
+            return self.text
+
+    class Document:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return None
+
+        def __iter__(self):
+            return iter([
+                Page("ZBHD AD 2.19 无线电导航和着陆设施"),
+                Page("""
+                    LOC 23 ILS CAT I IKK 108.5 MHz N362839.0 E1142520.0 230°MAG
+                    GP 23 330.5 MHz N362800.0 E1142600.0 3°下滑角 RDH15 m
+                    DME 23 IKK CH 22X (108.5 MHz) N362800.0 E1142600.0 120m 与 GP 23 合装
+                """),
+                Page("ZBHD AD 2.20 本场规定 LOC 05 ILS CAT I OLD 108.5 MHz N360000.0 E1140000.0"),
+            ])
+
+    monkeypatch.setattr("navdata_converter.pdf_charts.pymupdf.open", lambda _: Document())
+
+    extracted = extract_airport_ad219_ils(airport)
+
+    assert [(item.runway, item.ident, item.source.page) for item in extracted] == [("23", "IKK", 1)]
 
 
 def test_expands_slash_separated_runways_in_approach_chart_title():
