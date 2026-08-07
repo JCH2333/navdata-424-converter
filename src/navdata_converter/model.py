@@ -147,6 +147,10 @@ class ChartTerminalLeg:
     fix_ident: str | None
     raw: str
     procedure_kind: str = ""
+    course_degrees: float | None = None
+    altitude_meters: float | None = None
+    turn_direction: str | None = None
+    speed_limit_knots: int | None = None
 
 
 @dataclass

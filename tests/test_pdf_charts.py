@@ -51,6 +51,18 @@ def test_extracts_database_chart_rows_with_their_confirming_procedure_heading():
     ]
 
 
+def test_extracts_database_leg_course_altitude_turn_and_speed_columns():
+    evidence = extract_terminal_leg_evidence(
+        "CF YK551\nY\n037\nMAX220\nRWY04 \u79bb\u573a P389-09D\nDF YK404\nL\n900\nCA\n037\n300\nMAX220\nRWY04 \u79bb\u573a P387-09D"
+    )
+
+    assert [(item.leg_type, item.course_degrees, item.altitude_meters, item.turn_direction, item.speed_limit_knots) for item in evidence] == [
+        ("CF", 37.0, None, None, 220),
+        ("DF", None, 900.0, "L", None),
+        ("CA", 37.0, 300.0, None, 220),
+    ]
+
+
 def test_extracts_fix_from_next_line_when_pdf_table_columns_are_separate():
     evidence = extract_terminal_leg_evidence("CF\nYK551\nRWY04 离场 P389-09D\nDF\nYK404\nTF\nP389")
 

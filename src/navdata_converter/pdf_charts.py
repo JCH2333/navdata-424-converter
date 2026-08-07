@@ -33,6 +33,7 @@ _CHART_COORDINATE = re.compile(
 )
 _DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)?\s*[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()")
 _DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
+_DATABASE_SPEED = re.compile(r"^MAX(?P<speed>\d{2,3})$", re.IGNORECASE)
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _DMS_COORDINATE = re.compile(
     r"N\s*(?P<lat_deg>\d{2})\D+?(?P<lat_min>\d{2})\D+?(?P<lat_sec>\d{2}(?:\.\d+)?)[\"']?\s*"
@@ -178,6 +179,31 @@ def extract_positioned_coordinate_page_points(words: list[tuple[float, float, fl
     return tuple(point for _, _, point in sorted(result))
 
 
+def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_ident: str | None) -> tuple[float | None, float | None, str | None, int | None]:
+    """Read observable numeric fields from one database-coding table row."""
+    values: list[str] = []
+    for line in lines[start + 1:]:
+        if _DATABASE_LEG.match(line) or _DATABASE_PROCEDURE.search(line):
+            break
+        if line:
+            values.append(line)
+    if fix_ident and values[:1] == [fix_ident]:
+        values.pop(0)
+    turn_direction = next((value for value in values if value in {"L", "R"}), None)
+    speed = next((int(match["speed"]) for value in values if (match := _DATABASE_SPEED.fullmatch(value))), None)
+    numeric = [float(value) for value in values if value.isdecimal()]
+    course = None
+    altitude = None
+    if leg_type == "CA" and numeric:
+        course = numeric[0]
+        altitude = numeric[1] if len(numeric) > 1 else None
+    elif leg_type == "CF" and numeric:
+        course = numeric[0]
+    elif leg_type == "DF" and numeric:
+        altitude = numeric[0]
+    return course, altitude, turn_direction, speed
+
+
 def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     """Extract ordered database-chart rows without inferring ARINC semantics.
 
@@ -189,16 +215,16 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     active_label = ""
     active_runway = ""
     active_kind = ""
-    active_rows: list[tuple[str, str | None, str]] = []
-    pending_rows: list[tuple[str, str | None, str]] = []
+    active_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None]] = []
+    pending_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None]] = []
 
     def flush() -> None:
         nonlocal active_rows
         if not active_label:
             return
         result.extend(
-            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw, active_kind)
-            for leg_type, fix_ident, raw in active_rows
+            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw, active_kind, course, altitude, turn, speed)
+            for leg_type, fix_ident, raw, course, altitude, turn, speed in active_rows
         )
         active_rows = []
 
@@ -219,6 +245,8 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         next_line = lines[line_number + 1] if line_number + 1 < len(lines) else ""
         fix_ident = leg["fix"] or (next_line if _COORDINATE_PAGE_IDENT.fullmatch(next_line) and next_line not in _IGNORED else None)
         row = (leg["leg_type"], fix_ident, line if leg["fix"] else f"{line} {next_line}".rstrip())
+        course, altitude, turn, speed = _database_leg_attributes(lines, line_number, leg["leg_type"], fix_ident)
+        row = (*row, course, altitude, turn, speed)
         if leg["leg_type"] in {"CF", "CA"} and active_rows and active_rows[-1][0] != "CA":
             pending_rows.append(row)
         elif active_label:
