@@ -8,6 +8,7 @@ from .deployment import deploy, restore
 from .fenix import ConversionBlocked, build_rejection_report, convert
 from .source import load_naip
 from .validation import validate_candidate
+from .pdf_charts import extract_chart
 
 
 def _convert(args: argparse.Namespace) -> int:
@@ -43,6 +44,11 @@ def main(argv: list[str] | None = None) -> int:
     recovery.add_argument("--backup", required=True)
     recovery.add_argument("--target", required=True)
     recovery.set_defaults(handler=lambda a: restore(Path(a.backup), Path(a.target)) or 0)
+    inspection = commands.add_parser("inspect-pdf")
+    inspection.add_argument("--pdf", required=True)
+    inspection.add_argument("--airport", required=True)
+    inspection.add_argument("--chart-type", default="")
+    inspection.set_defaults(handler=lambda a: print(json.dumps([item.__dict__ | {"source": item.source.__dict__} for item in extract_chart(Path(a.pdf), a.airport, a.chart_type)], ensure_ascii=False, indent=2)) or 0)
     args = parser.parse_args(argv)
     return args.handler(args)
 

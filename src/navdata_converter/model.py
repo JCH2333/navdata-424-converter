@@ -86,6 +86,18 @@ class RejectedProcedure:
     source: SourceRef
 
 
+@dataclass(frozen=True)
+class ProcedureChart:
+    airport: str
+    filename: str
+    page: int
+    chart_type: str
+    text_sha256: str
+    procedure_labels: tuple[str, ...]
+    waypoints: tuple[str, ...]
+    source: SourceRef
+
+
 @dataclass
 class NavModel:
     root: Path
@@ -95,3 +107,4 @@ class NavModel:
     waypoints: list[Waypoint] = field(default_factory=list)
     airway_legs: list[AirwayLeg] = field(default_factory=list)
     rejected_procedures: list[RejectedProcedure] = field(default_factory=list)
+    procedure_charts: list[ProcedureChart] = field(default_factory=list)
