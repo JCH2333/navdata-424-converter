@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import shutil
 import sqlite3
 from dataclasses import asdict
@@ -20,6 +21,24 @@ class ConversionBlocked(RuntimeError):
 # collocated official identifiers.  Keep the behavior explicit and local to
 # the compatibility adapter rather than silently relying on row order.
 _REFERENCE2608_DESIGNATED_RETAIN = {"PAPA", "SADLI", "AGVUT", "OGIGI", "SULEM"}
+_PROCEDURE_LABEL = re.compile(r"^(?P<base>[A-Z0-9]+)-(?P<suffix>\d{1,2}[A-Z]{1,2})$")
+
+
+def fenix_procedure_name(label: str) -> str:
+    """Convert a printed CAAC database label to the observed Fenix name.
+
+    Fenix retains the chart suffix, shortens long named procedures to three
+    characters, and drops the leading digit from legacy three-digit P routes.
+    """
+    match = _PROCEDURE_LABEL.fullmatch(label.strip().upper())
+    if not match:
+        raise ValueError(f"unsupported terminal procedure label: {label!r}")
+    base = match["base"]
+    if re.fullmatch(r"P\d{3}", base):
+        base = f"P{base[-2:]}"
+    elif len(base) > 3:
+        base = base[:3]
+    return f"{base}{match['suffix']}"
 
 
 def encode_frequency(value: float, kind: str) -> int:

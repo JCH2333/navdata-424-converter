@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, missing_navaids, runway_threshold
+from navdata_converter.fenix import _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, missing_navaids, runway_threshold
 from navdata_converter.model import Airport, Navaid, NavModel, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -32,6 +32,13 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
 def test_fenix_navaid_frequency_uses_observed_bcd_contract():
     assert encode_frequency(112.4, "VOR") == 0x01124000
     assert encode_frequency(495, "NDB") == 0x04950000
+
+
+def test_fenix_procedure_name_matches_observed_database_labels():
+    assert fenix_procedure_name("P389-09D") == "P8909D"
+    assert fenix_procedure_name("P528-9ZD") == "P289ZD"
+    assert fenix_procedure_name("KAKAT-9ZA") == "KAK9ZA"
+    assert fenix_procedure_name("BM-09D") == "BM09D"
 
 
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():
