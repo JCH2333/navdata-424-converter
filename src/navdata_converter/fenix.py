@@ -5,16 +5,34 @@ import math
 import re
 import shutil
 import sqlite3
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .model import Navaid, NavModel, is_china_icao
+from .model import ChartTerminalLeg, Navaid, NavModel, is_china_icao
 from .profile import validate_fenix_profile
 from .source import romanize_name
 
 
 class ConversionBlocked(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class FenixTerminalLegProjection:
+    """The source-backed subset of one Fenix TerminalLegs/Ex pair."""
+
+    type_code: str
+    transition: str
+    track_code: str
+    waypoint_id: int | None
+    waypoint_latitude: float | None
+    waypoint_longitude: float | None
+    turn_direction: str | None
+    course: float | None
+    altitude: str | None
+    waypoint_description: str
+    speed_limit: float | None
+    speed_limit_description: str | None
 
 
 # The 2608 finished dataset deliberately retains these source points despite
@@ -52,6 +70,38 @@ def fenix_procedure_type(label: str, procedure_kind: str) -> str:
     if label.endswith("D"):
         return "2"
     raise ValueError(f"unsupported terminal procedure kind: {procedure_kind!r} for {label!r}")
+
+
+def _constraint_altitude(meters: float | None) -> str | None:
+    if meters is None:
+        return None
+    return f"{round(meters * 3.28084 / 100) * 100:.0f}A"
+
+
+def project_database_terminal_leg(
+    leg: ChartTerminalLeg,
+    procedure_type: str,
+    transition: str,
+    waypoint: tuple[int, float, float] | None = None,
+) -> FenixTerminalLegProjection:
+    """Project a database-coding leg only when every required source value exists."""
+    type_codes = {"1": "6", "2": "5"}
+    if procedure_type not in type_codes:
+        raise ValueError(f"unsupported Fenix procedure type: {procedure_type}")
+    if leg.leg_type not in {"CA", "CF", "DF", "TF"}:
+        raise ValueError(f"unsupported database leg type: {leg.leg_type}")
+    if leg.fix_ident and waypoint is None:
+        raise ValueError(f"missing resolved waypoint for {leg.fix_ident}")
+    if not leg.fix_ident and waypoint is not None:
+        raise ValueError(f"unexpected waypoint for {leg.leg_type}")
+    waypoint_id, waypoint_latitude, waypoint_longitude = waypoint or (None, None, None)
+    return FenixTerminalLegProjection(
+        type_codes[procedure_type], transition, leg.leg_type,
+        waypoint_id, waypoint_latitude, waypoint_longitude,
+        leg.turn_direction, leg.course_degrees, _constraint_altitude(leg.altitude_meters), "E",
+        float(leg.speed_limit_knots) if leg.speed_limit_knots is not None else None,
+        "B" if leg.speed_limit_knots is not None else None,
+    )
 
 
 def encode_frequency(value: float, kind: str) -> int:

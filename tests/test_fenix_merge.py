@@ -2,8 +2,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, missing_navaids, runway_threshold
-from navdata_converter.model import Airport, Navaid, NavModel, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
+from navdata_converter.fenix import _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, missing_navaids, project_database_terminal_leg, runway_threshold
+from navdata_converter.model import Airport, ChartTerminalLeg, Navaid, NavModel, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
 def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path):
@@ -41,6 +41,21 @@ def test_fenix_procedure_name_matches_observed_database_labels():
     assert fenix_procedure_name("BM-09D") == "BM09D"
     assert fenix_procedure_type("TGO-9ZD", "离场") == "2"
     assert fenix_procedure_type("TGO-9ZA", "进场") == "1"
+
+
+def test_projects_database_leg_constraints_into_fenix_leg_and_extension_fields():
+    cf = ChartTerminalLeg("P389-09D", "04", "CF", "YK551", "CF YK551", course_degrees=37.0, speed_limit_knots=220)
+    df = ChartTerminalLeg("P389-09D", "04", "DF", "YK404", "DF YK404", altitude_meters=900.0, turn_direction="L")
+    ca = ChartTerminalLeg("P387-09D", "04", "CA", None, "CA", course_degrees=37.0, altitude_meters=300.0, speed_limit_knots=220)
+
+    assert project_database_terminal_leg(cf, "2", "RW04", (327066, 40.624444, 122.418333)).__dict__ == {
+        "type_code": "5", "transition": "RW04", "track_code": "CF", "waypoint_id": 327066,
+        "waypoint_latitude": 40.624444, "waypoint_longitude": 122.418333, "turn_direction": None,
+        "course": 37.0, "altitude": None, "waypoint_description": "E", "speed_limit": 220.0,
+        "speed_limit_description": "B",
+    }
+    assert project_database_terminal_leg(df, "2", "RW04", (327054, 40.522222, 122.343889)).altitude == "3000A"
+    assert project_database_terminal_leg(ca, "2", "RW04").altitude == "1000A"
 
 
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():
