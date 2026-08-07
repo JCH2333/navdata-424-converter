@@ -28,7 +28,7 @@ _CHART_COORDINATE = re.compile(
     r"\s*[,/ ]*E\s*(?P<lon_deg>\d{3})\s*(?:[°º]|D)?\s*(?P<lon_min>\d{2}(?:\.\d+)?)\s*(?:['′])?\b",
     re.IGNORECASE,
 )
-_DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()")
+_DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)?\s*[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()")
 _DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _DMS_COORDINATE = re.compile(
@@ -139,6 +139,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     result: list[ChartTerminalLeg] = []
     active_label = ""
     active_runway = ""
+    active_kind = ""
     active_rows: list[tuple[str, str | None, str]] = []
     pending_rows: list[tuple[str, str | None, str]] = []
 
@@ -147,7 +148,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         if not active_label:
             return
         result.extend(
-            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw)
+            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw, active_kind)
             for leg_type, fix_ident, raw in active_rows
         )
         active_rows = []
@@ -159,6 +160,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
             flush()
             active_label = heading["label"]
             active_runway = heading["runway"]
+            active_kind = heading["kind"] or ""
             active_rows = pending_rows
             pending_rows = []
             continue

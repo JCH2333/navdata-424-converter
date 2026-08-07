@@ -43,6 +43,7 @@ def test_extracts_database_label_without_chinese_title_spacing():
         ("TGO-9ZD", "03", "CF", "P300"),
         ("TGO-9ZD", "03", "TF", "LELOG"),
     ]
+    assert {item.procedure_kind for item in evidence} == {"离场"}
 
 
 def test_pairs_coordinate_page_columns_only_when_counts_match():

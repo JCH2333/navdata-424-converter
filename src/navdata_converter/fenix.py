@@ -41,6 +41,19 @@ def fenix_procedure_name(label: str) -> str:
     return f"{base}{match['suffix']}"
 
 
+def fenix_procedure_type(label: str, procedure_kind: str) -> str:
+    """Map observable database-heading direction to Fenix procedure type."""
+    if procedure_kind == "\u79bb\u573a":
+        return "2"
+    if procedure_kind == "\u8fdb\u573a":
+        return "1"
+    if label.endswith("A"):
+        return "1"
+    if label.endswith("D"):
+        return "2"
+    raise ValueError(f"unsupported terminal procedure kind: {procedure_kind!r} for {label!r}")
+
+
 def encode_frequency(value: float, kind: str) -> int:
     """Encode NAIP radio values into Fenix's observed BCD integer format."""
     if kind == "VOR":

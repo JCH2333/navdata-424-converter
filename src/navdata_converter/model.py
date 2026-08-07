@@ -146,6 +146,7 @@ class ChartTerminalLeg:
     leg_type: str
     fix_ident: str | None
     raw: str
+    procedure_kind: str = ""
 
 
 @dataclass

@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, missing_navaids, runway_threshold
+from navdata_converter.fenix import _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, missing_navaids, runway_threshold
 from navdata_converter.model import Airport, Navaid, NavModel, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -39,6 +39,8 @@ def test_fenix_procedure_name_matches_observed_database_labels():
     assert fenix_procedure_name("P528-9ZD") == "P289ZD"
     assert fenix_procedure_name("KAKAT-9ZA") == "KAK9ZA"
     assert fenix_procedure_name("BM-09D") == "BM09D"
+    assert fenix_procedure_type("TGO-9ZD", "离场") == "2"
+    assert fenix_procedure_type("TGO-9ZA", "进场") == "1"
 
 
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():
