@@ -5,6 +5,8 @@ import hashlib
 import re
 from pathlib import Path
 
+from pypinyin import lazy_pinyin
+
 from .model import Airport, AirwayLeg, NavModel, Navaid, RejectedProcedure, Runway, SourceRef, Waypoint, is_china_icao
 
 
@@ -69,6 +71,11 @@ def _surface(value: str) -> str:
 def _feet(value: str) -> int:
     """NAIP vertical and runway dimensions are meters; Fenix stores feet."""
     return round(_float(value) * 3.28084)
+
+
+def romanize_name(value: str) -> str:
+    """Match Fenix's uppercase, separator-free Chinese place-name spelling."""
+    return "".join(lazy_pinyin(value or "")).upper()
 
 
 def load_naip(root: Path) -> NavModel:

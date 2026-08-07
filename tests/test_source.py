@@ -1,4 +1,4 @@
-from navdata_converter.source import _feet, _rows, _surface, parse_dms
+from navdata_converter.source import _feet, _rows, _surface, parse_dms, romanize_name
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -25,3 +25,8 @@ def test_naip_dimensions_convert_meters_to_fenix_feet():
 
 def test_naip_runway_elevations_use_val_elev_not_zero_threshold_field():
     assert _feet("1416.2") == 4646
+
+
+def test_romanize_name_matches_observed_fenix_spelling():
+    assert romanize_name("\u970d\u6797\u90ed\u52d2") == "HUOLINGUOLEI"
+    assert romanize_name("DGL") == "DGL"
