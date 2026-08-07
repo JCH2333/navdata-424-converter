@@ -2,7 +2,9 @@ import json
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, missing_navaids, project_database_terminal_leg, runway_threshold
+import pytest
+
+from navdata_converter.fenix import ConversionBlocked, _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, missing_navaids, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
 from navdata_converter.model import Airport, ChartTerminalLeg, Navaid, NavModel, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -56,6 +58,18 @@ def test_projects_database_leg_constraints_into_fenix_leg_and_extension_fields()
     }
     assert project_database_terminal_leg(df, "2", "RW04", (327054, 40.522222, 122.343889)).altitude == "3000A"
     assert project_database_terminal_leg(ca, "2", "RW04").altitude == "1000A"
+
+
+def test_resolves_terminal_fix_only_when_source_and_target_are_both_unique(tmp_path):
+    connection = sqlite3.connect(tmp_path / "waypoints.db3")
+    connection.execute("CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Latitude REAL, Longtitude REAL)")
+    connection.execute("INSERT INTO Waypoints VALUES (327066, 'YK551', 40.624444, 122.418333)")
+    source = SourceRef("Terminal/ZYYK/ZYYK-4Y01.pdf", page=1, sha256="hash")
+    model = NavModel(Path("."), terminal_waypoints=[TerminalWaypoint("source", "ZYYK", "YK551", 40.624444, 122.418333, source)])
+
+    assert resolve_terminal_waypoint(connection, model, "ZYYK", "YK551") == (327066, 40.624444, 122.418333)
+    with pytest.raises(ConversionBlocked, match="ZYYK/MISSING has 0 source locations"):
+        resolve_terminal_waypoint(connection, model, "ZYYK", "MISSING")
 
 
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():

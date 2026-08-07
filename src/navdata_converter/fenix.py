@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .model import ChartTerminalLeg, Navaid, NavModel, is_china_icao
+from .model import ChartTerminalLeg, Navaid, NavModel, TerminalWaypoint, is_china_icao
 from .profile import validate_fenix_profile
 from .source import romanize_name
 
@@ -102,6 +102,30 @@ def project_database_terminal_leg(
         float(leg.speed_limit_knots) if leg.speed_limit_knots is not None else None,
         "B" if leg.speed_limit_knots is not None else None,
     )
+
+
+def resolve_terminal_waypoint(
+    connection: sqlite3.Connection,
+    model: NavModel,
+    airport: str,
+    ident: str,
+) -> tuple[int, float, float]:
+    """Resolve one printed terminal fix to an exact target waypoint identity."""
+    source_points = {
+        (round(point.latitude, 9), round(point.longitude, 9))
+        for point in model.terminal_waypoints
+        if point.airport == airport and point.ident == ident
+    }
+    if len(source_points) != 1:
+        raise ConversionBlocked(f"terminal fix {airport}/{ident} has {len(source_points)} source locations")
+    latitude, longitude = next(iter(source_points))
+    rows = [
+        row for row in connection.execute("SELECT ID, Latitude, Longtitude FROM Waypoints WHERE Ident=?", (ident,))
+        if _distance_nm(latitude, longitude, row[1], row[2]) < 0.02
+    ]
+    if len(rows) != 1:
+        raise ConversionBlocked(f"terminal fix {airport}/{ident} has {len(rows)} target waypoint matches")
+    return int(rows[0][0]), float(rows[0][1]), float(rows[0][2])
 
 
 def encode_frequency(value: float, kind: str) -> int:
