@@ -28,6 +28,17 @@ _CHART_COORDINATE = re.compile(
 )
 _DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s+[^\n]+?\s+(?P<label>[A-Z0-9]{1,6}-\d{2}[AD])(?:\b|\()")
 _DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
+_COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
+_DMS_COORDINATE = re.compile(
+    r"N\s*(?P<lat_deg>\d{2})\D+?(?P<lat_min>\d{2})\D+?(?P<lat_sec>\d{2}(?:\.\d+)?)[\"']?\s*"
+    r"E\s*(?P<lon_deg>\d{3})\D+?(?P<lon_min>\d{2})\D+?(?P<lon_sec>\d{2}(?:\.\d+)?)[\"']?",
+    re.IGNORECASE,
+)
+_DM_COORDINATE = re.compile(
+    r"N\s*(?P<lat_deg>\d{2})\D+?(?P<lat_min>\d{2}(?:\.\d+)?)[\"']\s*"
+    r"E\s*(?P<lon_deg>\d{3})\D+?(?P<lon_min>\d{2}(?:\.\d+)?)[\"']",
+    re.IGNORECASE,
+)
 
 
 def extract_fix_coordinates(text: str) -> tuple[ChartFixCoordinate, ...]:
@@ -46,6 +57,39 @@ def extract_fix_coordinates(text: str) -> tuple[ChartFixCoordinate, ...]:
             raw=match.group(0),
         ))
     return tuple(coordinates)
+
+
+def extract_coordinate_page_points(text: str) -> tuple[ChartFixCoordinate, ...]:
+    """Pair a terminal coordinate-page's identifier and coordinate columns.
+
+    The CAAC coordinate pages present two independent columns in extraction
+    order: all identifiers followed by all coordinates.  Pairing is accepted
+    only when their counts agree exactly.
+    """
+    identifiers: list[str] = []
+    coordinates: list[ChartFixCoordinate] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if _COORDINATE_PAGE_IDENT.fullmatch(line) and line not in _IGNORED:
+            identifiers.append(line)
+            continue
+        match = _DMS_COORDINATE.search(line)
+        if match:
+            latitude = int(match["lat_deg"]) + int(match["lat_min"]) / 60 + float(match["lat_sec"]) / 3600
+            longitude = int(match["lon_deg"]) + int(match["lon_min"]) / 60 + float(match["lon_sec"]) / 3600
+            coordinates.append(ChartFixCoordinate(None, latitude, longitude, match.group(0)))
+            continue
+        match = _DM_COORDINATE.search(line)
+        if match:
+            latitude = int(match["lat_deg"]) + float(match["lat_min"]) / 60
+            longitude = int(match["lon_deg"]) + float(match["lon_min"]) / 60
+            coordinates.append(ChartFixCoordinate(None, latitude, longitude, match.group(0)))
+    if not identifiers or len(identifiers) != len(coordinates):
+        return ()
+    return tuple(
+        ChartFixCoordinate(identifier, coordinate.latitude, coordinate.longitude, coordinate.raw)
+        for identifier, coordinate in zip(identifiers, coordinates, strict=True)
+    )
 
 
 def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
@@ -102,6 +146,7 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str
     file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
     for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text(extraction_mode="layout") or ""
+        coordinate_text = page.extract_text() or ""
         labels = tuple(sorted(set(_PROCEDURE.findall(text))))
         runways = tuple(sorted(set(_RUNWAY.findall(f"{chart_name}\n{text}"))))
         waypoints = tuple(sorted({token for token in _WAYPOINT.findall(text) if token not in _IGNORED and not token.isdigit()}))
@@ -116,7 +161,9 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str
             runways=runways,
             waypoints=waypoints,
             terminal_legs=extract_terminal_leg_evidence(text),
-            fix_coordinates=extract_fix_coordinates(text),
+            fix_coordinates=extract_fix_coordinates(text) + (
+                extract_coordinate_page_points(text) or extract_coordinate_page_points(coordinate_text)
+            ),
             source=SourceRef(str(pdf), page_number, page_number, file_hash),
         ))
     return result
@@ -127,15 +174,7 @@ def extract_airport_charts(airport_directory: Path) -> list[ProcedureChart]:
     index = airport_directory / "Charts.csv"
     if not index.is_file():
         raise FileNotFoundError(f"missing chart index: {index}")
-    raw = index.read_bytes()
-    for encoding in ("utf-8-sig", "gbk"):
-        try:
-            rows = list(csv.DictReader(raw.decode(encoding).splitlines()))
-            break
-        except UnicodeDecodeError:
-            continue
-    else:  # pragma: no cover
-        raise ValueError(f"unsupported chart-index encoding: {index}")
+    rows = _chart_rows(index)
     charts: list[ProcedureChart] = []
     airport = airport_directory.resolve().name.upper()
     for row in rows:
@@ -149,4 +188,32 @@ def extract_airport_charts(airport_directory: Path) -> list[ProcedureChart]:
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
             charts.extend(extract_chart(pdf, airport, chart_type, chart_name))
+    return charts
+
+
+def _chart_rows(index: Path) -> list[dict[str, str]]:
+    raw = index.read_bytes()
+    for encoding in ("utf-8-sig", "gbk"):
+        try:
+            return list(csv.DictReader(raw.decode(encoding).splitlines()))
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(f"unsupported chart-index encoding: {index}")  # pragma: no cover
+
+
+def extract_airport_coordinate_pages(airport_directory: Path) -> list[ProcedureChart]:
+    """Extract only index-declared terminal waypoint coordinate pages."""
+    index = airport_directory / "Charts.csv"
+    if not index.is_file():
+        raise FileNotFoundError(f"missing chart index: {index}")
+    airport = airport_directory.resolve().name.upper()
+    charts: list[ProcedureChart] = []
+    for row in _chart_rows(index):
+        page = (row.get("PAGE_NUMBER") or "").strip()
+        chart_name = (row.get("ChartName") or "").strip()
+        if not page or "航路点坐标" not in chart_name:
+            continue
+        pdf = airport_directory / f"{airport}-{page}.pdf"
+        if pdf.is_file():
+            charts.extend(extract_chart(pdf, airport, "terminal-coordinate-page", chart_name))
     return charts
