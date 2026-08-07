@@ -254,10 +254,11 @@ def _retain_database_referenced_terminal_waypoints(model: NavModel) -> None:
     unused catalogue labels from consuming Fenix waypoint IDs.
     """
     used = {
-        (chart.airport, leg.fix_ident)
+        (chart.airport, identifier)
         for chart in model.procedure_charts
         for leg in chart.terminal_legs
-        if leg.fix_ident
+        for identifier in (leg.fix_ident, leg.center_ident)
+        if identifier
     }
     model.terminal_waypoints[:] = [
         point for point in model.terminal_waypoints
