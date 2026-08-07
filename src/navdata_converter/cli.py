@@ -11,6 +11,7 @@ from .source import load_naip
 from .validation import validate_candidate
 from .pdf_charts import extract_airport_charts, extract_chart
 from .reference_diff import compare_databases
+from .reference_delta import inspect_reference_delta
 
 
 def _chart_payload(chart: object) -> dict[str, object]:
@@ -63,6 +64,10 @@ def main(argv: list[str] | None = None) -> int:
     difference.add_argument("--candidate", required=True)
     difference.add_argument("--reference", required=True)
     difference.set_defaults(handler=lambda a: print(json.dumps(compare_databases(Path(a.candidate), Path(a.reference)), ensure_ascii=False, indent=2)) or 0)
+    delta = commands.add_parser("inspect-reference-delta")
+    delta.add_argument("--official-navdata", required=True)
+    delta.add_argument("--reference", required=True)
+    delta.set_defaults(handler=lambda a: print(json.dumps(inspect_reference_delta(Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2)) or 0)
     args = parser.parse_args(argv)
     return args.handler(args)
 
