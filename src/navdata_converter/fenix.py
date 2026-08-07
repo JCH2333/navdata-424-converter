@@ -478,6 +478,56 @@ def _copy_navdata(official: Path, output: Path) -> Path:
     return output / "nd.db3"
 
 
+def _clear_china_airport_domain(connection: sqlite3.Connection) -> dict[str, int]:
+    """Remove airport-owned Chinese records without touching global entities.
+
+    This is deliberately kept separate from projection.  A complete regional
+    replacement must repopulate ILSes, markers, terminals and their legs from
+    source-backed data before it can call this transaction on a candidate.
+    """
+    prefixes = ("ZB", "ZG", "ZH", "ZJ", "ZL", "ZP", "ZS", "ZU", "ZW", "ZY")
+    connection.execute("DROP TABLE IF EXISTS temp._fenix_china_airports")
+    connection.execute("DROP TABLE IF EXISTS temp._fenix_china_terminal_legs")
+    connection.execute("CREATE TEMP TABLE _fenix_china_airports (ID INTEGER PRIMARY KEY)")
+    connection.executemany(
+        "INSERT INTO _fenix_china_airports SELECT ID FROM Airports WHERE substr(ICAO, 1, 2)=?",
+        ((prefix,) for prefix in prefixes),
+    )
+    connection.execute(
+        "CREATE TEMP TABLE _fenix_china_terminal_legs (ID INTEGER PRIMARY KEY)"
+    )
+    connection.execute(
+        "INSERT INTO _fenix_china_terminal_legs "
+        "SELECT legs.ID FROM TerminalLegs AS legs "
+        "JOIN Terminals AS terminals ON terminals.ID=legs.TerminalID "
+        "WHERE terminals.AirportID IN (SELECT ID FROM _fenix_china_airports)"
+    )
+    counts = {
+        "airports_replaced": int(connection.execute("SELECT count(*) FROM _fenix_china_airports").fetchone()[0]),
+        "airport_lookups_removed": 0,
+        "runways_removed": 0,
+        "terminals_removed": 0,
+        "terminal_legs_removed": 0,
+        "terminal_leg_extensions_removed": 0,
+    }
+    # TerminalLegs references both the terminal and its extension row, so the
+    # extension rows must be removed only after the primary leg rows.
+    cursor = connection.execute("DELETE FROM TerminalLegs WHERE ID IN (SELECT ID FROM _fenix_china_terminal_legs)")
+    counts["terminal_legs_removed"] = cursor.rowcount
+    cursor = connection.execute("DELETE FROM TerminalLegsEx WHERE ID IN (SELECT ID FROM _fenix_china_terminal_legs)")
+    counts["terminal_leg_extensions_removed"] = cursor.rowcount
+    cursor = connection.execute("DELETE FROM Terminals WHERE AirportID IN (SELECT ID FROM _fenix_china_airports)")
+    counts["terminals_removed"] = cursor.rowcount
+    cursor = connection.execute("DELETE FROM Runways WHERE AirportID IN (SELECT ID FROM _fenix_china_airports)")
+    counts["runways_removed"] = cursor.rowcount
+    cursor = connection.execute("DELETE FROM AirportLookup WHERE ID IN (SELECT ID FROM _fenix_china_airports)")
+    counts["airport_lookups_removed"] = cursor.rowcount
+    connection.execute("DELETE FROM Airports WHERE ID IN (SELECT ID FROM _fenix_china_airports)")
+    connection.execute("DROP TABLE temp._fenix_china_terminal_legs")
+    connection.execute("DROP TABLE temp._fenix_china_airports")
+    return counts
+
+
 def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, int]:
     airport_ids: dict[str, int] = {}
     existing_airports = dict(connection.execute("SELECT ICAO, ID FROM Airports"))

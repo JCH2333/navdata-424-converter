@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _insert_model, _insert_terminal_procedures, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _insert_model, _insert_terminal_procedures, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
 from navdata_converter.model import Airport, ChartTerminalLeg, Navaid, NavModel, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -29,6 +29,43 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
     assert db.execute("SELECT ID FROM Airports WHERE ICAO='ZBCF'").fetchone() == (11,)
     assert db.execute("SELECT AirportID FROM Runways").fetchone() == (11,)
     db.commit()
+
+
+def test_clears_only_china_airport_domain_in_foreign_key_order(tmp_path):
+    connection = sqlite3.connect(tmp_path / "regional-replace.db3")
+    connection.executescript("""
+        PRAGMA foreign_keys=ON;
+        CREATE TABLE Airports (ID INTEGER PRIMARY KEY, ICAO TEXT, PrimaryID INTEGER REFERENCES Airports(ID));
+        CREATE TABLE AirportLookup (extID TEXT PRIMARY KEY, ID INTEGER REFERENCES Airports(ID));
+        CREATE TABLE Runways (ID INTEGER PRIMARY KEY, AirportID INTEGER REFERENCES Airports(ID));
+        CREATE TABLE Terminals (ID INTEGER PRIMARY KEY, AirportID INTEGER REFERENCES Airports(ID));
+        CREATE TABLE TerminalLegsEx (ID INTEGER PRIMARY KEY);
+        CREATE TABLE TerminalLegs (ID INTEGER PRIMARY KEY REFERENCES TerminalLegsEx(ID), TerminalID INTEGER REFERENCES Terminals(ID));
+        INSERT INTO Airports VALUES (1, 'ZBAA', NULL), (2, 'KJFK', NULL);
+        INSERT INTO AirportLookup VALUES ('ZBAA', 1), ('KJFK', 2);
+        INSERT INTO Runways VALUES (10, 1), (20, 2);
+        INSERT INTO Terminals VALUES (100, 1), (200, 2);
+        INSERT INTO TerminalLegsEx VALUES (1000), (2000);
+        INSERT INTO TerminalLegs VALUES (1000, 100), (2000, 200);
+    """)
+
+    counts = _clear_china_airport_domain(connection)
+
+    assert counts == {
+        "airports_replaced": 1,
+        "airport_lookups_removed": 1,
+        "runways_removed": 1,
+        "terminals_removed": 1,
+        "terminal_legs_removed": 1,
+        "terminal_leg_extensions_removed": 1,
+    }
+    assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert connection.execute("SELECT ID FROM Airports").fetchall() == [(2,)]
+    assert connection.execute("SELECT ID FROM AirportLookup").fetchall() == [(2,)]
+    assert connection.execute("SELECT ID FROM Runways").fetchall() == [(20,)]
+    assert connection.execute("SELECT ID FROM Terminals").fetchall() == [(200,)]
+    assert connection.execute("SELECT ID FROM TerminalLegs").fetchall() == [(2000,)]
+    assert connection.execute("SELECT ID FROM TerminalLegsEx").fetchall() == [(2000,)]
 
 
 def test_fenix_navaid_frequency_uses_observed_bcd_contract():
