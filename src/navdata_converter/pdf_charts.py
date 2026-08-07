@@ -19,7 +19,7 @@ from typing import Callable
 import pymupdf
 from pypdf import PdfReader
 
-from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
+from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
 _EVIDENCE_CACHE_VERSION = 11
@@ -61,6 +61,77 @@ _DM_COORDINATE = re.compile(
     r"E\s*(?P<lon_deg>\d{2,3})\D+?(?P<lon_min>\d{2}(?:\.\d+)?)[\"']",
     re.IGNORECASE,
 )
+_AIP_DMS_COORDINATE = re.compile(
+    r"N\s*(?P<lat>\d{6}(?:\.\d+)?)\s*E\s*(?P<lon>\d{7}(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+_AIP_LOC = re.compile(
+    r"\bLOC\s*(?P<runway>\d{2}[LRC]?)\s+(?:ILS\s*)?(?:CAT\s*(?P<category>I{1,3})\s+)?"
+    r"(?P<ident>[A-Z0-9]{2,5})\s+(?P<frequency>\d{3}\.\d)\s*MHz\s*"
+    r"(?P<coordinate>N\s*\d{6}(?:\.\d+)?\s*E\s*\d{7}(?:\.\d+)?)(?P<tail>.{0,220})",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _parse_aip_dms_coordinate(value: str) -> tuple[float, float]:
+    match = _AIP_DMS_COORDINATE.fullmatch(value.strip())
+    if match is None:
+        raise ValueError(f"invalid AD 2.19 coordinate: {value!r}")
+
+    def convert(digits: str, degree_digits: int) -> float:
+        degrees = int(digits[:degree_digits])
+        minutes = int(digits[degree_digits:degree_digits + 2])
+        seconds = float(digits[degree_digits + 2:])
+        if minutes >= 60 or seconds >= 60:
+            raise ValueError(f"invalid AD 2.19 coordinate: {value!r}")
+        return degrees + minutes / 60 + seconds / 3600
+
+    return convert(match["lat"], 2), convert(match["lon"], 3)
+
+
+def extract_ad219_ils(text: str, airport: str, source: SourceRef) -> tuple[Ils, ...]:
+    """Extract only explicitly printed AD 2.19 LOC/GP/DME facts."""
+    result: list[Ils] = []
+    for localizer in _AIP_LOC.finditer(text):
+        localizer_latitude, localizer_longitude = _parse_aip_dms_coordinate(localizer["coordinate"])
+        tail = localizer["tail"]
+        course_match = re.search(r"(?P<course>\d{3})\s*[°º]\s*MAG", tail, re.IGNORECASE)
+        runway = localizer["runway"].upper()
+        ident = localizer["ident"].upper()
+        # ``tail`` starts immediately after the localizer coordinate.  Reuse
+        # that offset so optional GP/DME rows still remain visible even when
+        # the bounded localizer context consumed them.
+        remainder = text[localizer.start("tail"):]
+        dme = re.search(
+            rf"\bDME\s*{re.escape(runway)}\s+{re.escape(ident)}\b.{{0,180}}?"
+            r"(?P<coordinate>N\s*\d{6}(?:\.\d+)?\s*E\s*\d{7}(?:\.\d+)?)(?P<tail>.{0,120})",
+            remainder, re.IGNORECASE | re.DOTALL,
+        )
+        glide_path = re.search(
+            rf"\bGP\s*{re.escape(runway)}\b.{{0,180}}?"
+            r"(?P<coordinate>N\s*\d{6}(?:\.\d+)?\s*E\s*\d{7}(?:\.\d+)?)(?P<tail>.{0,180})",
+            remainder, re.IGNORECASE | re.DOTALL,
+        )
+        dme_latitude = dme_longitude = dme_elevation = None
+        if dme is not None:
+            dme_latitude, dme_longitude = _parse_aip_dms_coordinate(dme["coordinate"])
+            elevation_match = re.search(r"(?P<elevation>\d+(?:\.\d+)?)\s*m\b", dme["tail"], re.IGNORECASE)
+            dme_elevation = float(elevation_match["elevation"]) if elevation_match else None
+        glide_latitude = glide_longitude = glide_angle = None
+        if glide_path is not None:
+            glide_latitude, glide_longitude = _parse_aip_dms_coordinate(glide_path["coordinate"])
+            angle_match = re.search(r"(?P<angle>\d(?:\.\d+)?)\s*[°º]\s*(?:下滑角|GP)", glide_path["tail"], re.IGNORECASE)
+            glide_angle = float(angle_match["angle"]) if angle_match else None
+        result.append(Ils(
+            airport=airport.upper(), runway=runway, ident=ident, frequency_mhz=float(localizer["frequency"]),
+            category=localizer["category"], localizer_latitude=localizer_latitude,
+            localizer_longitude=localizer_longitude,
+            localizer_course_magnetic=float(course_match["course"]) if course_match else None,
+            glide_slope_degrees=glide_angle, glide_slope_latitude=glide_latitude,
+            glide_slope_longitude=glide_longitude, dme_latitude=dme_latitude,
+            dme_longitude=dme_longitude, dme_elevation_meters=dme_elevation, source=source,
+        ))
+    return tuple(result)
 
 
 def extract_fix_coordinates(text: str) -> tuple[ChartFixCoordinate, ...]:
@@ -533,6 +604,31 @@ def extract_airport_charts(airport_directory: Path) -> list[ProcedureChart]:
         if pdf.is_file():
             charts.extend(extract_chart(pdf, airport, chart_type, chart_name))
     return charts
+
+
+def extract_airport_ad219_ils(airport_directory: Path) -> list[Ils]:
+    """Read unindexed airport AD 2.19 landing-aid pages from PDF text layers."""
+    airport = airport_directory.resolve().name.upper()
+    index = airport_directory / "Charts.csv"
+    indexed = {
+        f"{airport}-{(row.get('PAGE_NUMBER') or '').strip()}.pdf".lower()
+        for row in _chart_rows(index)
+        if (row.get("PAGE_NUMBER") or "").strip()
+    } if index.is_file() else set()
+    result: list[Ils] = []
+    for pdf in sorted(airport_directory.glob("*.pdf")):
+        if pdf.name.lower() in indexed:
+            continue
+        file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
+        with pymupdf.open(pdf) as document:
+            for page_number, page in enumerate(document, start=1):
+                text = page.get_text()
+                if "AD 2.19" not in text and "无线电导航和着陆设施" not in text:
+                    continue
+                result.extend(extract_ad219_ils(
+                    text, airport, SourceRef(str(pdf), page_number, page_number, file_hash),
+                ))
+    return result
 
 
 def extract_airport_database_charts(airport_directory: Path, cache_dir: Path | None = None) -> list[ProcedureChart]:

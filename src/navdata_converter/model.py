@@ -61,6 +61,27 @@ class Navaid:
 
 
 @dataclass(frozen=True)
+class Ils:
+    """A source-backed localizer/GP/DME record from an AD 2.19 PDF page."""
+
+    airport: str
+    runway: str
+    ident: str
+    frequency_mhz: float
+    category: str | None
+    localizer_latitude: float
+    localizer_longitude: float
+    localizer_course_magnetic: float | None
+    glide_slope_degrees: float | None
+    glide_slope_latitude: float | None
+    glide_slope_longitude: float | None
+    dme_latitude: float | None
+    dme_longitude: float | None
+    dme_elevation_meters: float | None
+    source: SourceRef
+
+
+@dataclass(frozen=True)
 class Waypoint:
     key: str
     ident: str
@@ -183,6 +204,7 @@ class NavModel:
     airports: dict[str, Airport] = field(default_factory=dict)
     runways: list[Runway] = field(default_factory=list)
     navaids: list[Navaid] = field(default_factory=list)
+    ilses: list[Ils] = field(default_factory=list)
     waypoints: list[Waypoint] = field(default_factory=list)
     terminal_waypoints: list[TerminalWaypoint] = field(default_factory=list)
     airway_legs: list[AirwayLeg] = field(default_factory=list)

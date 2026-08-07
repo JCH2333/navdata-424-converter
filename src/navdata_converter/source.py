@@ -3,12 +3,13 @@ from __future__ import annotations
 import csv
 import hashlib
 import re
+from dataclasses import replace
 from pathlib import Path
 
 from pypinyin import lazy_pinyin
 
 from .model import CN_PREFIXES, Airport, AirwayLeg, NavModel, Navaid, ProcedureSegment, RejectedProcedure, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint, is_china_icao
-from .pdf_charts import extract_airport_approach_charts, extract_airport_coordinate_pages, extract_airport_database_charts, extract_airport_standard_procedure_charts
+from .pdf_charts import extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_coordinate_pages, extract_airport_database_charts, extract_airport_standard_procedure_charts
 
 
 _FIR_COUNTRIES = {
@@ -194,6 +195,7 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
         model.airway_legs.append(AirwayLeg(row.get("TXT_DESIG") or "", _number(row.get("VAL_SORT") or "0"),
             row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number)))
     _load_terminal_coordinate_pages(model, pdf_cache)
+    _load_terminal_landing_aids(model)
     _load_terminal_database_charts(model, pdf_cache)
     _build_database_procedure_segments(model)
     _retain_database_referenced_terminal_waypoints(model)
@@ -201,6 +203,23 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
     _load_terminal_standard_procedure_charts(model, pdf_cache)
     _reject_unparsed_charts(model)
     return model
+
+
+def _load_terminal_landing_aids(model: NavModel) -> None:
+    """Retain AD 2.19 landing-aid evidence before any Fenix field projection."""
+    terminal = model.root / "Terminal"
+    if not terminal.is_dir():
+        return
+    for airport_directory in sorted(path for path in terminal.iterdir() if path.is_dir()):
+        for ils in extract_airport_ad219_ils(airport_directory):
+            source_path = Path(ils.source.file)
+            model.ilses.append(replace(
+                ils,
+                source=SourceRef(
+                    source_path.relative_to(model.root).as_posix(), ils.source.row,
+                    ils.source.page, ils.source.sha256,
+                ),
+            ))
 
 
 def _load_terminal_coordinate_pages(model: NavModel, pdf_cache: Path | None = None) -> None:

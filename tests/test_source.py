@@ -1,13 +1,26 @@
-from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
+from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, Ils, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
 import pytest
 
-from navdata_converter.source import _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
+from navdata_converter.source import _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
     assert round(parse_dms("N271940"), 6) == 27.327778
     assert round(parse_dms("E1163551"), 6) == 116.5975
     assert round(parse_dms("W0733000"), 6) == -73.5
+
+
+def test_load_terminal_landing_aids_preserves_root_relative_pdf_source(monkeypatch, tmp_path):
+    airport = tmp_path / "Terminal" / "ZBCF"
+    airport.mkdir(parents=True)
+    source = SourceRef(str(airport / "赤峰玉龙.pdf"), 12, 12, "hash")
+    expected = Ils("ZBCF", "21", "ICF", 108.5, "I", 42.1, 118.8, 212.0, 3.2, 42.2, 118.9, 42.2, 118.9, 616.0, source)
+    monkeypatch.setattr("navdata_converter.source.extract_airport_ad219_ils", lambda directory: [expected])
+    model = NavModel(tmp_path)
+
+    _load_terminal_landing_aids(model)
+
+    assert model.ilses == [Ils("ZBCF", "21", "ICF", 108.5, "I", 42.1, 118.8, 212.0, 3.2, 42.2, 118.9, 42.2, 118.9, 616.0, SourceRef("Terminal/ZBCF/赤峰玉龙.pdf", 12, 12, "hash"))]
 
 
 def test_csv_reader_supports_utf8_chart_index(tmp_path):

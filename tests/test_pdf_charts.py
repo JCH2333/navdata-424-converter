@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -9,6 +11,28 @@ def test_extracts_observable_procedure_and_fix_labels():
     assert _PROCEDURE.findall(text) == ["KAKAT-01D", "TGO-01D"]
     assert {item for item in _WAYPOINT.findall(text) if item not in {"RNP"}} >= {"KAKAT", "CHF"}
     assert _RUNWAY.findall("RWY03 RWY 21L") == ["03", "21L"]
+
+
+def test_extracts_only_printed_ad219_localizer_glide_path_and_dme_fields():
+    text = """
+    LOC 21 ILS CAT I ICF 108.5 MHz N420837.2 E1184955.1
+    距03号跑道入口 212°MAG/385m
+    GP 21 329.9 MHz N421006.4 E1185038.3
+    3.2°下滑角 RDH15m
+    DME 21 ICF CH 22X (108.5 MHz) N421006.4 E1185038.1 616m
+    """
+
+    extracted = extract_ad219_ils(text, "ZBCF", SourceRef("Terminal/ZBCF/airport.pdf", 12, 12, "hash"))
+
+    assert len(extracted) == 1
+    ils = extracted[0]
+    assert (ils.airport, ils.runway, ils.ident, ils.frequency_mhz, ils.category) == ("ZBCF", "21", "ICF", 108.5, "I")
+    assert (ils.localizer_latitude, ils.localizer_longitude) == pytest.approx((42.14366666666667, 118.83197222222222))
+    assert ils.localizer_course_magnetic == 212.0
+    assert ils.glide_slope_degrees == 3.2
+    assert (ils.glide_slope_latitude, ils.glide_slope_longitude) == pytest.approx((42.168444444444445, 118.84397222222222))
+    assert (ils.dme_latitude, ils.dme_longitude, ils.dme_elevation_meters) == pytest.approx((42.168444444444445, 118.84391666666667, 616.0))
+    assert ils.source == SourceRef("Terminal/ZBCF/airport.pdf", 12, 12, "hash")
 
 
 def test_expands_slash_separated_runways_in_approach_chart_title():
