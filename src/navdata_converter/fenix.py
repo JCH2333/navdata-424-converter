@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .model import ChartTerminalLeg, Navaid, NavModel, TerminalWaypoint, is_china_icao
+from .model import ChartTerminalLeg, Navaid, NavModel, ProcedureSegment, TerminalWaypoint, is_china_icao
 from .profile import validate_fenix_profile
 from .source import romanize_name
 
@@ -70,6 +70,18 @@ def fenix_procedure_type(label: str, procedure_kind: str) -> str:
     if label.endswith("D"):
         return "2"
     raise ValueError(f"unsupported terminal procedure kind: {procedure_kind!r} for {label!r}")
+
+
+def fenix_terminal_identity(segment: ProcedureSegment) -> tuple[str, str, str]:
+    """Map a source procedure segment to its Fenix terminal business key.
+
+    Database coding pages use a literal runway heading for an approach, while
+    Fenix names the unlettered base procedure ``R{runway}``. Lettered variants
+    require their own chart-path decoder and are deliberately not guessed.
+    """
+    if segment.kind in {"进近过渡", "进近", "复飞"}:
+        return "3", f"R{segment.runway}", segment.runway
+    return fenix_procedure_type(segment.label, segment.kind), fenix_procedure_name(segment.label), segment.runway
 
 
 def _constraint_altitude(meters: float | None) -> str | None:

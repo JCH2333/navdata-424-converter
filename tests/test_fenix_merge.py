@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, missing_navaids, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
-from navdata_converter.model import Airport, ChartTerminalLeg, Navaid, NavModel, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
+from navdata_converter.fenix import ConversionBlocked, _insert_model, _insert_waypoints, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.model import Airport, ChartTerminalLeg, Navaid, NavModel, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
 def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path):
@@ -43,6 +43,15 @@ def test_fenix_procedure_name_matches_observed_database_labels():
     assert fenix_procedure_name("BM-09D") == "BM09D"
     assert fenix_procedure_type("TGO-9ZD", "离场") == "2"
     assert fenix_procedure_type("TGO-9ZA", "进场") == "1"
+
+
+def test_database_approach_segments_map_only_to_unlettered_fenix_base_identity():
+    source = SourceRef("Terminal/ZBHZ/ZBHZ-4Z02.pdf", 1, 1, "hash")
+    approach = ProcedureSegment("ZBHZ", "R29", "进近", "29", "", (), source)
+    departure = ProcedureSegment("ZYYK", "BM-09D", "离场", "04", "", (), source)
+
+    assert fenix_terminal_identity(approach) == ("3", "R29", "29")
+    assert fenix_terminal_identity(departure) == ("2", "BM09D", "04")
 
 
 def test_projects_database_leg_constraints_into_fenix_leg_and_extension_fields():

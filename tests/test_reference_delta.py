@@ -1,8 +1,8 @@
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.model import ChartRouteFix, ChartTerminalLeg, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
-from navdata_converter.reference_delta import inspect_approach_chart_coverage, inspect_database_fix_coverage, inspect_reference_delta, inspect_role_fix_coverage, inspect_terminal_waypoint_coverage
+from navdata_converter.model import ChartRouteFix, ChartTerminalLeg, NavModel, ProcedureSegment, ProcedureChart, SourceRef, TerminalWaypoint
+from navdata_converter.reference_delta import inspect_approach_chart_coverage, inspect_database_fix_coverage, inspect_database_procedure_plan_coverage, inspect_reference_delta, inspect_role_fix_coverage, inspect_terminal_waypoint_coverage
 
 
 def _database(path, rows):
@@ -129,3 +129,22 @@ def test_role_fix_coverage_requires_explicit_chart_role_and_coordinate_identity(
     model = NavModel(Path("."), terminal_waypoints=[TerminalWaypoint("source", "ZYYK", "FIX", 40.624444, 122.418333, source)], procedure_charts=[chart])
 
     assert inspect_role_fix_coverage(model, official, reference) == {"role_fix_keys": 1, "coordinate_points": 1, "reference_added_matches": 1}
+
+
+def test_procedure_plan_coverage_compares_business_keys_without_copying_reference_rows(tmp_path):
+    official = tmp_path / "official.db3"
+    reference = tmp_path / "reference.db3"
+    for database, rows in ((official, [(1, "ZYYK", 2, "OLD", "04")]), (reference, [(1, "ZYYK", 2, "OLD", "04"), (2, "ZYYK", 2, "BM09D", "04")])):
+        with sqlite3.connect(database) as connection:
+            connection.execute("CREATE TABLE Terminals (ID INTEGER, ICAO TEXT, Proc INTEGER, Name TEXT, Rwy TEXT)")
+            connection.executemany("INSERT INTO Terminals VALUES (?, ?, ?, ?, ?)", rows)
+    source = SourceRef("Terminal/ZYYK/ZYYK-4Z01.pdf", 1, 1, "hash")
+    model = NavModel(Path("."), procedure_segments=[
+        ProcedureSegment("ZYYK", "BM-09D", "离场", "04", "", (), source),
+    ])
+
+    report = inspect_database_procedure_plan_coverage(model, official, reference)
+
+    assert report["source_terminal_keys"] == 1
+    assert report["matched_reference_keys"] == 1
+    assert report["matched_delta_keys"] == 1

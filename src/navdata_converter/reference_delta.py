@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 from .model import NavModel
+from .fenix import fenix_terminal_identity
 from .pdf_charts import approach_procedure_name_candidates
 
 
@@ -205,6 +206,45 @@ def inspect_role_fix_coverage(model: NavModel, official: Path, reference: Path, 
         for identifier, latitude, longitude in points
     )
     return {"role_fix_keys": len(fix_keys), "coordinate_points": len(points), "reference_added_matches": matches}
+
+
+def inspect_database_procedure_plan_coverage(model: NavModel, official: Path, reference: Path) -> dict[str, object]:
+    """Compare source-backed procedure-plan identities with a reference delta."""
+    plans = set()
+    unsupported = []
+    for segment in model.procedure_segments:
+        try:
+            proc, name, runway = fenix_terminal_identity(segment)
+        except ValueError:
+            unsupported.append({"airport": segment.airport, "label": segment.label, "kind": segment.kind})
+            continue
+        plans.add((segment.airport, proc, name, runway))
+    official_database, reference_database = _db(official), _db(reference)
+    with sqlite3.connect(f"file:{official_database}?mode=ro", uri=True) as base, sqlite3.connect(f"file:{reference_database}?mode=ro", uri=True) as finished:
+        base_rows = {row[0]: row for row in base.execute("SELECT ID, ICAO, Proc, Name, Rwy FROM Terminals")}
+        reference_rows = list(finished.execute("SELECT ID, ICAO, Proc, Name, Rwy FROM Terminals"))
+    all_reference = {(str(icao), str(proc), str(name or ""), str(runway or "")) for _, icao, proc, name, runway in reference_rows}
+    delta = {
+        (str(icao), str(proc), str(name or ""), str(runway or ""))
+        for identifier, icao, proc, name, runway in reference_rows
+        if identifier not in base_rows or (identifier, icao, proc, name, runway) != base_rows[identifier]
+    }
+    return {
+        "source_segments": len(model.procedure_segments),
+        "source_terminal_keys": len(plans),
+        "unsupported_segment_count": len(unsupported),
+        "unsupported_segment_sample": unsupported[:20],
+        "matched_reference_keys": len(plans & all_reference),
+        "matched_delta_keys": len(plans & delta),
+        "source_without_reference_sample": [
+            {"airport": airport, "proc": proc, "name": name, "runway": runway}
+            for airport, proc, name, runway in sorted(plans - all_reference)[:20]
+        ],
+        "delta_without_source_sample": [
+            {"airport": airport, "proc": proc, "name": name, "runway": runway}
+            for airport, proc, name, runway in sorted(delta - plans)[:20]
+        ],
+    }
 
 
 def _runway_key(value: object) -> str:
