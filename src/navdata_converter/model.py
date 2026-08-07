@@ -163,6 +163,19 @@ class ChartRouteFix:
     role: str
 
 
+@dataclass(frozen=True)
+class ProcedureSegment:
+    """One ordered, source-backed terminal procedure segment."""
+
+    airport: str
+    label: str
+    kind: str
+    runway: str
+    transition: str
+    legs: tuple[ChartTerminalLeg, ...]
+    source: SourceRef
+
+
 @dataclass
 class NavModel:
     root: Path
@@ -175,3 +188,4 @@ class NavModel:
     rejected_records: list[RejectedRecord] = field(default_factory=list)
     rejected_procedures: list[RejectedProcedure] = field(default_factory=list)
     procedure_charts: list[ProcedureChart] = field(default_factory=list)
+    procedure_segments: list[ProcedureSegment] = field(default_factory=list)

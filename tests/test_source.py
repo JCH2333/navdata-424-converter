@@ -1,7 +1,7 @@
 from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
 import pytest
 
-from navdata_converter.source import _feet, _load_terminal_coordinate_pages, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
+from navdata_converter.source import _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -121,6 +121,27 @@ def test_terminal_coordinate_points_must_be_referenced_by_a_database_leg(tmp_pat
     _retain_database_referenced_terminal_waypoints(model)
 
     assert [point.ident for point in model.terminal_waypoints] == ["USED"]
+
+
+def test_database_chart_rows_form_ordered_procedure_segments(tmp_path):
+    source = SourceRef("Terminal/ZBHZ/ZBHZ-4Z02.pdf", 1, 1, "hash")
+    chart = ProcedureChart(
+        "ZBHZ", "ZBHZ-4Z02.pdf", 1, "terminal-database-coding", "database", "text", (), (), (), (
+            ChartTerminalLeg("R29", "29", "IF", "HZ405", "IF HZ405", "进近过渡", transition="HZ405"),
+            ChartTerminalLeg("R29", "29", "TF", "HZ407", "TF HZ407", "进近过渡", transition="HZ405"),
+            ChartTerminalLeg("R29", "29", "IF", "HZ407", "IF HZ407", "进近"),
+            ChartTerminalLeg("R29", "29", "CF", "HZ412", "CF HZ412", "复飞"),
+        ), (), source,
+    )
+    model = NavModel(tmp_path, procedure_charts=[chart])
+
+    _build_database_procedure_segments(model)
+
+    assert [(segment.label, segment.kind, segment.transition, [leg.fix_ident for leg in segment.legs]) for segment in model.procedure_segments] == [
+        ("R29", "进近过渡", "HZ405", ["HZ405", "HZ407"]),
+        ("R29", "进近", "", ["HZ407"]),
+        ("R29", "复飞", "", ["HZ412"]),
+    ]
 
 
 def test_terminal_approach_charts_are_retained_as_index_evidence(monkeypatch, tmp_path):

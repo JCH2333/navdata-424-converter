@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pypinyin import lazy_pinyin
 
-from .model import CN_PREFIXES, Airport, AirwayLeg, NavModel, Navaid, RejectedProcedure, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint, is_china_icao
+from .model import CN_PREFIXES, Airport, AirwayLeg, NavModel, Navaid, ProcedureSegment, RejectedProcedure, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint, is_china_icao
 from .pdf_charts import extract_airport_approach_charts, extract_airport_coordinate_pages, extract_airport_database_charts, extract_airport_standard_procedure_charts
 
 
@@ -195,6 +195,7 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
             row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number)))
     _load_terminal_coordinate_pages(model, pdf_cache)
     _load_terminal_database_charts(model, pdf_cache)
+    _build_database_procedure_segments(model)
     _retain_database_referenced_terminal_waypoints(model)
     _load_terminal_approach_charts(model, pdf_cache)
     _load_terminal_standard_procedure_charts(model, pdf_cache)
@@ -262,6 +263,33 @@ def _retain_database_referenced_terminal_waypoints(model: NavModel) -> None:
         point for point in model.terminal_waypoints
         if (point.airport, point.ident) in used
     ]
+
+
+def _build_database_procedure_segments(model: NavModel) -> None:
+    """Group consecutive database-coded rows without inventing route geometry."""
+    model.procedure_segments.clear()
+    for chart in model.procedure_charts:
+        if chart.chart_type != "terminal-database-coding":
+            continue
+        active_key: tuple[str, str, str, str] | None = None
+        active_legs = []
+
+        def flush() -> None:
+            if active_key is None or not active_legs:
+                return
+            label, kind, runway, transition = active_key
+            model.procedure_segments.append(ProcedureSegment(
+                chart.airport, label, kind, runway, transition, tuple(active_legs), chart.source,
+            ))
+
+        for leg in chart.terminal_legs:
+            key = (leg.procedure_label, leg.procedure_kind, leg.runway, leg.transition)
+            if active_key is not None and key != active_key:
+                flush()
+                active_legs.clear()
+            active_key = key
+            active_legs.append(leg)
+        flush()
 
 
 def _load_terminal_approach_charts(model: NavModel, pdf_cache: Path | None = None) -> None:
