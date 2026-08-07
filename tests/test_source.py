@@ -79,3 +79,17 @@ def test_terminal_coordinate_page_with_no_pairs_is_explicitly_rejected(monkeypat
     _load_terminal_coordinate_pages(model)
 
     assert [(item.kind, item.key) for item in model.rejected_records] == [("terminal-coordinate-page", "ZBAD")]
+
+
+def test_terminal_database_charts_are_retained_as_procedure_evidence(monkeypatch, tmp_path):
+    from navdata_converter.source import _load_terminal_database_charts
+
+    airport_directory = tmp_path / "Terminal" / "ZBAD"
+    airport_directory.mkdir(parents=True)
+    chart = ProcedureChart("ZBAD", "ZBAD-4Z01.pdf", 1, "terminal-database-coding", "database", "text-hash", (), (), (), (), (), SourceRef("ignored"))
+    monkeypatch.setattr("navdata_converter.source.extract_airport_database_charts", lambda _: [chart])
+    model = NavModel(tmp_path)
+
+    _load_terminal_database_charts(model)
+
+    assert model.procedure_charts == [chart]

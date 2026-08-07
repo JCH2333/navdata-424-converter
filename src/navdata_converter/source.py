@@ -8,7 +8,7 @@ from pathlib import Path
 from pypinyin import lazy_pinyin
 
 from .model import CN_PREFIXES, Airport, AirwayLeg, NavModel, Navaid, RejectedProcedure, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint, is_china_icao
-from .pdf_charts import extract_airport_coordinate_pages
+from .pdf_charts import extract_airport_coordinate_pages, extract_airport_database_charts
 
 
 _FIR_COUNTRIES = {
@@ -184,6 +184,7 @@ def load_naip(root: Path) -> NavModel:
         model.airway_legs.append(AirwayLeg(row.get("TXT_DESIG") or "", _number(row.get("VAL_SORT") or "0"),
             row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number)))
     _load_terminal_coordinate_pages(model)
+    _load_terminal_database_charts(model)
     _reject_unparsed_charts(model)
     return model
 
@@ -219,6 +220,15 @@ def _load_terminal_coordinate_pages(model: NavModel) -> None:
                     key, chart.airport, point.ident, point.latitude, point.longitude,
                     SourceRef((airport_directory / chart.filename).relative_to(model.root).as_posix(), chart.page, chart.page, chart.source.sha256), chart.airport[:2],
                 ))
+
+
+def _load_terminal_database_charts(model: NavModel) -> None:
+    """Retain database-coding leg evidence for later Fenix procedure mapping."""
+    terminal = model.root / "Terminal"
+    if not terminal.is_dir():
+        return
+    for airport_directory in sorted(path for path in terminal.iterdir() if path.is_dir()):
+        model.procedure_charts.extend(extract_airport_database_charts(airport_directory))
 
 
 def _reject_unparsed_charts(model: NavModel) -> None:

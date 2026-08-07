@@ -295,6 +295,8 @@ def convert(official_navdata: Path, model: NavModel, output: Path, reference: Pa
                   "profile": profile["config"], "counts": counts, "rejected_procedures": [asdict(item) for item in model.rejected_procedures],
                   "rejected_records": [asdict(item) for item in model.rejected_records],
                   "terminal_waypoint_evidence": len(model.terminal_waypoints),
+                  "terminal_database_chart_evidence": len(model.procedure_charts),
+                  "terminal_database_leg_evidence": sum(len(chart.terminal_legs) for chart in model.procedure_charts),
                   "reference": str(reference) if reference else None}
         (output / "conversion-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return report
@@ -307,7 +309,9 @@ def build_rejection_report(model: NavModel, output: Path) -> Path:
     output.mkdir(parents=True, exist_ok=True)
     report = {"status": "blocked", "test_build": True, "rejected_procedures": [asdict(item) for item in model.rejected_procedures],
               "rejected_records": [asdict(item) for item in model.rejected_records],
-              "terminal_waypoint_evidence": len(model.terminal_waypoints)}
+              "terminal_waypoint_evidence": len(model.terminal_waypoints),
+              "terminal_database_chart_evidence": len(model.procedure_charts),
+              "terminal_database_leg_evidence": sum(len(chart.terminal_legs) for chart in model.procedure_charts)}
     target = output / "conversion-report.json"
     target.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return target
