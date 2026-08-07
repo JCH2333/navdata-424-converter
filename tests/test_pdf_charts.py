@@ -35,6 +35,16 @@ def test_extracts_fix_from_next_line_when_pdf_table_columns_are_separate():
     assert [(item.leg_type, item.fix_ident) for item in evidence] == [("CF", "YK551"), ("DF", "YK404"), ("TF", "P389")]
 
 
+def test_extracts_database_label_without_chinese_title_spacing():
+    evidence = extract_terminal_leg_evidence("RWY03 离场TGO-9ZD\nCA\n032\nCF\nP300\nTF\nLELOG")
+
+    assert [(item.procedure_label, item.runway, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("TGO-9ZD", "03", "CA", None),
+        ("TGO-9ZD", "03", "CF", "P300"),
+        ("TGO-9ZD", "03", "TF", "LELOG"),
+    ]
+
+
 def test_pairs_coordinate_page_columns_only_when_counts_match():
     text = "YK401\nBM\nN40°35'40\"E121°48'14\"\nN39°39.4'E121°44.8'"
 

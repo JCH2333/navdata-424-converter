@@ -28,8 +28,8 @@ _CHART_COORDINATE = re.compile(
     r"\s*[,/ ]*E\s*(?P<lon_deg>\d{3})\s*(?:[°º]|D)?\s*(?P<lon_min>\d{2}(?:\.\d+)?)\s*(?:['′])?\b",
     re.IGNORECASE,
 )
-_DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s+[^\n]+?\s+(?P<label>[A-Z0-9]{1,6}-\d{2}[AD])(?:\b|\()")
-_DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
+_DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()")
+_DATABASE_LEG = re.compile(r"^(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _DMS_COORDINATE = re.compile(
     r"N\s*(?P<lat_deg>\d{2})\D+?(?P<lat_min>\d{2})\D+?(?P<lat_sec>\d{2}(?:\.\d+)?)[\"']?\s*"
@@ -168,7 +168,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         next_line = lines[line_number + 1] if line_number + 1 < len(lines) else ""
         fix_ident = leg["fix"] or (next_line if _COORDINATE_PAGE_IDENT.fullmatch(next_line) and next_line not in _IGNORED else None)
         row = (leg["leg_type"], fix_ident, line if leg["fix"] else f"{line} {next_line}".rstrip())
-        if leg["leg_type"] in {"CF", "CA"} and active_rows:
+        if leg["leg_type"] in {"CF", "CA"} and active_rows and active_rows[-1][0] != "CA":
             pending_rows.append(row)
         elif active_label:
             active_rows.append(row)
