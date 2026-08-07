@@ -33,6 +33,9 @@ class FenixTerminalLegProjection:
     waypoint_description: str
     speed_limit: float | None
     speed_limit_description: str | None
+    center_id: int | None = None
+    center_latitude: float | None = None
+    center_longitude: float | None = None
 
 
 # The 2608 finished dataset deliberately retains these source points despite
@@ -94,24 +97,31 @@ def project_database_terminal_leg(
     procedure_type: str,
     transition: str,
     waypoint: tuple[int, float, float] | None = None,
+    center: tuple[int, float, float] | None = None,
 ) -> FenixTerminalLegProjection:
     """Project a database-coding leg only when every required source value exists."""
     type_codes = {"1": "6", "2": "5"}
     if procedure_type not in type_codes:
         raise ValueError(f"unsupported Fenix procedure type: {procedure_type}")
-    if leg.leg_type not in {"CA", "CF", "DF", "IF", "TF"}:
+    if leg.leg_type not in {"CA", "CF", "DF", "IF", "RF", "TF"}:
         raise ValueError(f"unsupported database leg type: {leg.leg_type}")
     if leg.fix_ident and waypoint is None:
         raise ValueError(f"missing resolved waypoint for {leg.fix_ident}")
     if not leg.fix_ident and waypoint is not None:
         raise ValueError(f"unexpected waypoint for {leg.leg_type}")
+    if leg.leg_type == "RF" and center is None:
+        raise ValueError("missing resolved RF center")
+    if leg.leg_type != "RF" and center is not None:
+        raise ValueError(f"unexpected center for {leg.leg_type}")
     waypoint_id, waypoint_latitude, waypoint_longitude = waypoint or (None, None, None)
+    center_id, center_latitude, center_longitude = center or (None, None, None)
     return FenixTerminalLegProjection(
         type_codes[procedure_type], transition, leg.leg_type,
         waypoint_id, waypoint_latitude, waypoint_longitude,
         leg.turn_direction, leg.course_degrees, _constraint_altitude(leg.altitude_meters), "E",
         float(leg.speed_limit_knots) if leg.speed_limit_knots is not None else None,
         "B" if leg.speed_limit_knots is not None else None,
+        center_id, center_latitude, center_longitude,
     )
 
 
@@ -409,12 +419,18 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
             projections = []
             for leg in legs:
                 key = (segment.airport, leg.fix_ident) if leg.fix_ident else None
+                center_key = (segment.airport, leg.center_ident) if leg.center_ident else None
                 if key and key in waypoint_failures:
                     raise ConversionBlocked(waypoint_failures[key])
                 if key and key not in waypoint_resolutions:
                     raise ConversionBlocked(f"terminal fix {segment.airport}/{leg.fix_ident} has no source coordinate evidence")
+                if center_key and center_key in waypoint_failures:
+                    raise ConversionBlocked(waypoint_failures[center_key])
+                if center_key and center_key not in waypoint_resolutions:
+                    raise ConversionBlocked(f"terminal RF center {segment.airport}/{leg.center_ident} has no source coordinate evidence")
                 projections.append(project_database_terminal_leg(
                     leg, procedure_type, transition, waypoint_resolutions[key] if key else None,
+                    waypoint_resolutions[center_key] if center_key else None,
                 ))
         except (ConversionBlocked, ValueError) as error:
             rejected.append({"airport": segment.airport, "label": segment.label, "reason": str(error), "source": asdict(segment.source)})
@@ -434,7 +450,7 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
                     next_leg_id, next_terminal_id, projection.type_code, projection.transition, projection.track_code,
                     projection.waypoint_id, projection.waypoint_latitude, projection.waypoint_longitude,
                     projection.turn_direction, None, None, None, None, None, projection.course, None,
-                    projection.altitude, None, None, None, None, projection.waypoint_description,
+                    projection.altitude, None, projection.center_id, projection.center_latitude, projection.center_longitude, projection.waypoint_description,
                 ),
             )
             next_leg_id += 1

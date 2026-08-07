@@ -67,11 +67,13 @@ def test_projects_database_leg_constraints_into_fenix_leg_and_extension_fields()
         "type_code": "5", "transition": "RW04", "track_code": "CF", "waypoint_id": 327066,
         "waypoint_latitude": 40.624444, "waypoint_longitude": 122.418333, "turn_direction": None,
         "course": 37.0, "altitude": None, "waypoint_description": "E", "speed_limit": 220.0,
-        "speed_limit_description": "B",
+        "speed_limit_description": "B", "center_id": None, "center_latitude": None, "center_longitude": None,
     }
     assert project_database_terminal_leg(df, "2", "RW04", (327054, 40.522222, 122.343889)).altitude == "3000A"
     assert project_database_terminal_leg(ca, "2", "RW04").altitude == "1000A"
     assert project_database_terminal_leg(ChartTerminalLeg("BM-09D", "04", "IF", "YK551", "IF YK551"), "2", "RW04", (327066, 40.624444, 122.418333)).track_code == "IF"
+    rf = ChartTerminalLeg("P363-9D", "10", "RF", "XH604", "RF[XHC20, 4] XH604", "离场", turn_direction="L", center_ident="XHC20")
+    assert project_database_terminal_leg(rf, "2", "RW10", (322765, 34.8075, 102.709917), (322766, 34.87325, 102.695861)).center_id == 322766
 
 
 def test_inserts_fully_resolved_source_sid_with_paired_extension_legs(tmp_path):
