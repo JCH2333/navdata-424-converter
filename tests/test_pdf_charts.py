@@ -135,6 +135,14 @@ def test_extracts_database_leg_after_rotated_text_residue():
     ]
 
 
+def test_extracts_rf_center_endpoint_and_turn_from_database_row():
+    evidence = extract_terminal_leg_evidence("RWY10 离场 P363-9D\nRF[XHC20, 4] XH604 L MAX220")
+
+    assert [(item.leg_type, item.center_ident, item.fix_ident, item.turn_direction, item.speed_limit_knots) for item in evidence] == [
+        ("RF", "XHC20", "XH604", "L", 220),
+    ]
+
+
 def test_pairs_coordinate_page_columns_only_when_counts_match():
     text = "YK401\nBM\nN40°35'40\"E121°48'14\"\nN39°39.4'E121°44.8'"
 

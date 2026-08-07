@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 7
+_EVIDENCE_CACHE_VERSION = 8
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -48,6 +48,7 @@ _DATABASE_APPROACH_PROCEDURE = re.compile(
     r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5}))?\b"
 )
 _DATABASE_LEG = re.compile(r"\b(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
+_DATABASE_RF_LEG = re.compile(r"\bRF\s*\[\s*(?P<center>[A-Z][A-Z0-9]{0,5})\s*,\s*\d+\s*\]\s*(?P<fix>[A-Z][A-Z0-9]{0,5})?")
 _DATABASE_SPEED = re.compile(r"^MAX(?P<speed>\d{2,3})$", re.IGNORECASE)
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _DMS_COORDINATE = re.compile(
@@ -332,16 +333,16 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     active_runway = ""
     active_kind = ""
     active_transition = ""
-    active_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None]] = []
-    pending_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None]] = []
+    active_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None, str | None]] = []
+    pending_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None, str | None]] = []
 
     def flush() -> None:
         nonlocal active_rows
         if not active_label:
             return
         result.extend(
-            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw, active_kind, course, altitude, turn, speed, active_transition)
-            for leg_type, fix_ident, raw, course, altitude, turn, speed in active_rows
+            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw, active_kind, course, altitude, turn, speed, active_transition, center_ident)
+            for leg_type, fix_ident, raw, course, altitude, turn, speed, center_ident in active_rows
         )
         active_rows = []
 
@@ -368,15 +369,22 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 active_rows = pending_rows
             pending_rows = []
             continue
-        leg = _DATABASE_LEG.search(line)
+        rf_leg = _DATABASE_RF_LEG.search(line)
+        leg = rf_leg or _DATABASE_LEG.search(line)
         if not leg:
             continue
         next_line = lines[line_number + 1] if line_number + 1 < len(lines) else ""
+        leg_type = "RF" if rf_leg else leg["leg_type"]
         fix_ident = leg["fix"] or (next_line if _COORDINATE_PAGE_IDENT.fullmatch(next_line) and next_line not in _IGNORED else None)
-        row = (leg["leg_type"], fix_ident, line if leg["fix"] else f"{line} {next_line}".rstrip())
-        course, altitude, turn, speed = _database_leg_attributes(lines, line_number, leg["leg_type"], fix_ident)
-        row = (*row, course, altitude, turn, speed)
-        if (leg["leg_type"] in {"CF", "CA"} and active_rows and active_rows[-1][0] != "CA"
+        row = (leg_type, fix_ident, line if leg["fix"] else f"{line} {next_line}".rstrip())
+        course, altitude, turn, speed = _database_leg_attributes(lines, line_number, leg_type, fix_ident)
+        if rf_leg:
+            tokens = line.replace(",", " ").split()
+            turn = turn or next((token for token in tokens if token in {"L", "R"}), None)
+            speed_match = re.search(r"\bMAX(\d{2,3})\b", line, re.IGNORECASE)
+            speed = speed or (int(speed_match.group(1)) if speed_match else None)
+        row = (*row, course, altitude, turn, speed, rf_leg["center"] if rf_leg else None)
+        if (leg_type in {"CF", "CA"} and active_rows and active_rows[-1][0] != "CA"
                 and not active_label.startswith("R")):
             pending_rows.append(row)
         elif active_label:

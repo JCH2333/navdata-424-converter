@@ -153,6 +153,7 @@ class ChartTerminalLeg:
     turn_direction: str | None = None
     speed_limit_knots: int | None = None
     transition: str = ""
+    center_ident: str | None = None
 
 
 @dataclass(frozen=True)
