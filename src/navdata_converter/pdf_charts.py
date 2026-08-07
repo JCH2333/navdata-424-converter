@@ -258,6 +258,42 @@ def extract_airport_database_charts(airport_directory: Path) -> list[ProcedureCh
     return charts
 
 
+def _is_instrument_approach_index_row(row: dict[str, str]) -> bool:
+    """Return whether a chart-index row is an instrument-approach chart.
+
+    This classification deliberately relies on the publisher's chart index,
+    not on text guessed from a rendered procedure plate.  Some 2608 indexes
+    use an underscored chart-name category instead of the normal type label.
+    """
+    chart_type = (row.get("ChartTypeEx_CH") or "").strip()
+    chart_name = (row.get("ChartName") or "").strip()
+    return "\u4eea\u8868\u8fdb\u8fd1\u56fe" in chart_type or "\u8fdb\u8fd1\u56fe_" in chart_type or "\u8fdb\u8fd1\u56fe_" in chart_name
+
+
+def extract_airport_approach_charts(airport_directory: Path) -> list[ProcedureChart]:
+    """Extract index-declared instrument approach pages as source evidence.
+
+    These charts are intentionally not interpreted as Fenix terminal legs.
+    They establish only that a source page is associated with an airport and
+    printed runway, allowing the reference-comparison command to measure the
+    currently unimplemented approach-procedure surface.
+    """
+    index = airport_directory / "Charts.csv"
+    if not index.is_file():
+        raise FileNotFoundError(f"missing chart index: {index}")
+    airport = airport_directory.resolve().name.upper()
+    charts: list[ProcedureChart] = []
+    for row in _chart_rows(index):
+        page = (row.get("PAGE_NUMBER") or "").strip()
+        chart_name = (row.get("ChartName") or "").strip()
+        if not page or not _is_instrument_approach_index_row(row):
+            continue
+        pdf = airport_directory / f"{airport}-{page}.pdf"
+        if pdf.is_file():
+            charts.extend(extract_approach_chart(pdf, airport, "instrument-approach-index", chart_name))
+    return charts
+
+
 def _chart_rows(index: Path) -> list[dict[str, str]]:
     raw = index.read_bytes()
     for encoding in ("utf-8-sig", "gbk"):
@@ -307,3 +343,8 @@ def extract_database_chart(pdf: Path, airport: str, chart_type: str, chart_name:
         for page_number, page in enumerate(document, start=1):
             result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, page.get_text(), file_hash))
     return result
+
+
+def extract_approach_chart(pdf: Path, airport: str, chart_type: str, chart_name: str) -> list[ProcedureChart]:
+    """Extract text-layer evidence from an index-declared approach chart."""
+    return extract_database_chart(pdf, airport, chart_type, chart_name)

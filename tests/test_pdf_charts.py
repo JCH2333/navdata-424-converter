@@ -1,4 +1,4 @@
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_rows, extract_airport_database_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_rows, extract_airport_approach_charts, extract_airport_database_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -109,3 +109,23 @@ def test_database_chart_selection_uses_only_database_coding_index_rows(monkeypat
 
     assert extract_airport_database_charts(airport) == []
     assert calls == ["ZBAD-4Z01.pdf"]
+
+
+def test_approach_chart_selection_uses_chart_type_and_preserves_index_name(monkeypatch, tmp_path):
+    airport = tmp_path / "ZYYK"
+    airport.mkdir()
+    (airport / "Charts.csv").write_text(
+        "ChartName,ChartTypeEx_CH,PAGE_NUMBER\n"
+        "ILS Z RWY04,\u4eea\u8868\u8fdb\u8fd1\u56fe,5A\n"
+        "SID RWY04,\u6807\u51c6\u4eea\u8868\u79bb\u573a\u56fe,3A\n",
+        encoding="utf-8",
+    )
+    (airport / "ZYYK-5A.pdf").write_bytes(b"placeholder")
+    calls = []
+    monkeypatch.setattr(
+        "navdata_converter.pdf_charts.extract_approach_chart",
+        lambda pdf, airport_code, chart_type, chart_name: calls.append((pdf.name, airport_code, chart_type, chart_name)) or [],
+    )
+
+    assert extract_airport_approach_charts(airport) == []
+    assert calls == [("ZYYK-5A.pdf", "ZYYK", "instrument-approach-index", "ILS Z RWY04")]

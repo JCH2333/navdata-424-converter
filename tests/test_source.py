@@ -93,3 +93,17 @@ def test_terminal_database_charts_are_retained_as_procedure_evidence(monkeypatch
     _load_terminal_database_charts(model)
 
     assert model.procedure_charts == [chart]
+
+
+def test_terminal_approach_charts_are_retained_as_index_evidence(monkeypatch, tmp_path):
+    from navdata_converter.source import _load_terminal_approach_charts
+
+    airport_directory = tmp_path / "Terminal" / "ZYYK"
+    airport_directory.mkdir(parents=True)
+    chart = ProcedureChart("ZYYK", "ZYYK-5A.pdf", 1, "instrument-approach-index", "ILS Z RWY04", "text-hash", (), ("04",), (), (), (), SourceRef("ignored"))
+    monkeypatch.setattr("navdata_converter.source.extract_airport_approach_charts", lambda _: [chart])
+    model = NavModel(tmp_path)
+
+    _load_terminal_approach_charts(model)
+
+    assert model.procedure_charts == [chart]

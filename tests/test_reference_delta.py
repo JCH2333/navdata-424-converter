@@ -1,8 +1,8 @@
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.model import NavModel, SourceRef, TerminalWaypoint
-from navdata_converter.reference_delta import inspect_reference_delta, inspect_terminal_waypoint_coverage
+from navdata_converter.model import NavModel, ProcedureChart, SourceRef, TerminalWaypoint
+from navdata_converter.reference_delta import inspect_approach_chart_coverage, inspect_reference_delta, inspect_terminal_waypoint_coverage
 
 
 def _database(path, rows):
@@ -61,3 +61,31 @@ def test_terminal_coordinate_coverage_requires_matching_ident_and_location(tmp_p
     assert report["reference_missing_sample"] == [{
         "airport": "ZBAD", "ident": "NEW", "latitude": 31.0, "longitude": 40.0, "source": "Terminal/ZBAD/ZBAD-4Y01.pdf",
     }]
+
+
+def test_approach_chart_coverage_compares_indexed_runways_to_fenix_proc_three(tmp_path):
+    reference = tmp_path / "reference.db3"
+    with sqlite3.connect(reference) as connection:
+        connection.execute("CREATE TABLE Terminals (ID INTEGER, Proc INTEGER, ICAO TEXT, Rwy TEXT, Name TEXT)")
+        connection.executemany("INSERT INTO Terminals VALUES (?, ?, ?, ?, ?)", [
+            (1, 3, "ZYYK", "04", "R04"),
+            (2, 3, "ZYYK", "22", "R22"),
+            (3, 2, "ZYYK", "04", "P8909D"),
+        ])
+    source = SourceRef("Terminal/ZYYK/ZYYK-5A.pdf", 1, 1, "hash")
+    model = NavModel(Path("."), procedure_charts=[
+        ProcedureChart("ZYYK", "ZYYK-5A.pdf", 1, "instrument-approach-index", "ILS Z RWY04", "text", (), ("04",), (), (), (), source),
+    ])
+
+    report = inspect_approach_chart_coverage(model, reference)
+
+    assert report == {
+        "evidence_pages": 1,
+        "evidence_pairs": 1,
+        "reference_pairs": 2,
+        "matched_pairs": 1,
+        "evidence_without_reference": [],
+        "reference_without_evidence": [{"airport": "ZYYK", "runway": "22"}],
+        "reference_non_runway_name_count": 0,
+        "reference_non_runway_name_sample": [],
+    }

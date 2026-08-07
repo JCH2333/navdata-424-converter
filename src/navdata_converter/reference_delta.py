@@ -151,3 +151,56 @@ def inspect_terminal_waypoint_coverage(model: NavModel, official: Path, referenc
                 source = sources[0]
                 samples.append({"airport": source.airport, "ident": identifier, "latitude": latitude, "longitude": longitude, "source": source.source.file})
     return result
+
+
+def _runway_key(value: object) -> str:
+    """Normalize printed Fenix and chart runway tokens for a read-only join."""
+    runway = str(value or "").upper().strip().replace(" ", "")
+    if runway.startswith("RWY"):
+        runway = runway[3:]
+    if runway.startswith("R") and len(runway) > 1 and runway[1:3].isdigit():
+        runway = runway[1:]
+    return runway
+
+
+def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[str, object]:
+    """Compare indexed NAIP approach-chart runways to Fenix Proc=3 rows.
+
+    It is a source-evidence diagnostic only: an index page identifies a runway
+    surface but does not yet establish a procedure name, transition, or leg
+    sequence.  Consequently callers must not use this result for conversion.
+    """
+    charts = [chart for chart in model.procedure_charts if chart.chart_type == "instrument-approach-index"]
+    evidence = {
+        (chart.airport.upper(), _runway_key(runway))
+        for chart in charts
+        for runway in chart.runways
+        if _runway_key(runway)
+    }
+    database = _db(reference)
+    with sqlite3.connect(f"file:{database}?mode=ro", uri=True) as connection:
+        rows = connection.execute("SELECT ICAO, Rwy, Name FROM Terminals WHERE Proc = 3").fetchall()
+    reference_pairs = {
+        (str(icao).upper(), _runway_key(runway))
+        for icao, runway, _ in rows
+        if str(icao).upper() in {airport for airport, _ in evidence} and _runway_key(runway)
+    }
+    non_runway_names = [
+        {"airport": str(icao).upper(), "runway": _runway_key(runway), "name": str(name or "")}
+        for icao, runway, name in rows
+        if str(icao).upper() in {airport for airport, _ in evidence}
+        and _runway_key(runway)
+        and str(name or "").upper() != f"R{_runway_key(runway)}"
+    ]
+    def payload(pair: tuple[str, str]) -> dict[str, str]:
+        return {"airport": pair[0], "runway": pair[1]}
+    return {
+        "evidence_pages": len(charts),
+        "evidence_pairs": len(evidence),
+        "reference_pairs": len(reference_pairs),
+        "matched_pairs": len(evidence & reference_pairs),
+        "evidence_without_reference": [payload(pair) for pair in sorted(evidence - reference_pairs)[:20]],
+        "reference_without_evidence": [payload(pair) for pair in sorted(reference_pairs - evidence)[:20]],
+        "reference_non_runway_name_count": len(non_runway_names),
+        "reference_non_runway_name_sample": non_runway_names[:20],
+    }
