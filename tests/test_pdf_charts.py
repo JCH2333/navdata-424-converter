@@ -17,9 +17,9 @@ def test_expands_slash_separated_runways_in_approach_chart_title():
 
 
 def test_derives_conservative_fenix_approach_name_candidates_from_chart_title():
-    assert approach_procedure_name_candidates("RNAV ILS/DME z RWY01", ("01",)) == ("I01-Z",)
-    assert approach_procedure_name_candidates("RNP x RWY18L(AR)", ("18L",)) == ("R18L-X",)
-    assert approach_procedure_name_candidates("RNP ILS/DME y RWY22", ("22",)) == ("I22-Y", "R22-Y")
+    assert approach_procedure_name_candidates("RNAV ILS/DME z RWY01", ("01",)) == ("I01", "I01-Z")
+    assert approach_procedure_name_candidates("RNP x RWY18L(AR)", ("18L",)) == ("R18L", "R18L-X")
+    assert approach_procedure_name_candidates("RNP ILS/DME y RWY22", ("22",)) == ("I22", "R22", "I22-Y", "R22-Y")
     assert approach_procedure_name_candidates("VOR/DME RWY04", ("04",)) == ("D04",)
     assert approach_procedure_name_candidates("RNAV ILS/DME RWY01L", ("01L",)) == ("I01L",)
     assert approach_procedure_name_candidates("RNP w RWY13", ("13",)) == ("R13-W",)

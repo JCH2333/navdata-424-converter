@@ -94,6 +94,10 @@ def approach_procedure_name_candidates(chart_name: str, runways: tuple[str, ...]
         if not variant:
             candidates.extend(f"{family}{runway}" for family in families or ["R"])
             continue
+        # The finished 2608 library retains a base ILS/RNP procedure alongside
+        # the explicitly lettered chart variants.  It is a title-supported
+        # compatibility candidate, not a claim that both share leg geometry.
+        candidates.extend(f"{family}{runway}" for family in families if family in {"I", "R"})
         for family in families:
             if family in {"D", "N", "Q"}:
                 candidates.append(f"{family}{runway}")

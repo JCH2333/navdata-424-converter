@@ -17,6 +17,6 @@ python -m navdata_converter.cli inspect-approach-chart-coverage `
 
 诊断会单独报告不等于 `R{跑道号}` 的成品进近名称。它们通常是同一跑道上的 ILS、RNP 或其他独立进近程序，必须通过图表内容继续解析；不能将它们视为异常或用跑道简名替代。
 
-当前会从标题中保守推导名称候选，且名称推导只使用标题中的跑道，避免正文附带的其他跑道污染。带 `ILS/DME w/x/y/z` 或 `RNP w/x/y/z` 的标题可给出相应的 `I...` 或 `R...` 变体；无变体的 ILS、RNP、VOR/DME、NDB、NDB/DME 标题分别给出 `I`、`R`、`D`、`N`、`Q` 前缀。VOR/DME、NDB、NDB/DME 不保留标题变体字母。`matched_names` 只衡量候选与成品的精确交集，不能作为写入许可。
+当前会从标题中保守推导名称候选，且名称推导只使用标题中的跑道，避免正文附带的其他跑道污染。带 `ILS/DME w/x/y/z` 或 `RNP w/x/y/z` 的标题可给出相应的 `I...` 或 `R...` 变体，并保留同族基础名称；无变体的 ILS、RNP、VOR/DME、NDB、NDB/DME 标题分别给出 `I`、`R`、`D`、`N`、`Q` 前缀。VOR/DME、NDB、NDB/DME 不保留标题变体字母。`matched_names` 只衡量候选与成品的精确交集，不能作为写入许可。
 
 `delta_names` 与 `matched_delta_names` 是转换工作应采用的指标：它们只统计相对官方模板新增或变更的成品 `Proc=3` 程序。官方模板中逐字段未变的程序不是转换器的写入对象。
