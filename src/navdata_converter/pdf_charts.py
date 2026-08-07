@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import csv
 from dataclasses import replace
@@ -21,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 6
+_EVIDENCE_CACHE_VERSION = 7
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -37,7 +38,10 @@ _CHART_COORDINATE = re.compile(
     r"\s*[,/ ]*E\s*(?P<lon_deg>\d{3})\s*(?:[°º]|D)?\s*(?P<lon_min>\d{2}(?:\.\d+)?)\s*(?:['′])?\b",
     re.IGNORECASE,
 )
-_DATABASE_PROCEDURE = re.compile(r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)?\s*[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()")
+_DATABASE_PROCEDURE = re.compile(
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)*\s*"
+    r"(?:(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)\s*|)[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()"
+)
 _DATABASE_APPROACH_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1|\u590d\u98de)"
     r"(?:\s*-\s*(?P<variant>[WXYZ]))?"
@@ -447,7 +451,10 @@ def _cached_extract(
         pass
     charts = extractor(pdf, airport, chart_type, chart_name)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    temporary = cache_file.with_suffix(".tmp")
+    # Multiple diagnostics may warm the same local cache concurrently.  A
+    # process-specific temporary file keeps one writer from deleting another
+    # writer's pending payload before its atomic replacement.
+    temporary = cache_file.with_suffix(f".{os.getpid()}.tmp")
     temporary.write_text(json.dumps({"key": key_material, "charts": [_chart_to_payload(chart) for chart in charts]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")), encoding="utf-8")
     temporary.replace(cache_file)
     return charts

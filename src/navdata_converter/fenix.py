@@ -99,7 +99,7 @@ def project_database_terminal_leg(
     type_codes = {"1": "6", "2": "5"}
     if procedure_type not in type_codes:
         raise ValueError(f"unsupported Fenix procedure type: {procedure_type}")
-    if leg.leg_type not in {"CA", "CF", "DF", "TF"}:
+    if leg.leg_type not in {"CA", "CF", "DF", "IF", "TF"}:
         raise ValueError(f"unsupported database leg type: {leg.leg_type}")
     if leg.fix_ident and waypoint is None:
         raise ValueError(f"missing resolved waypoint for {leg.fix_ident}")
@@ -137,6 +137,33 @@ def resolve_terminal_waypoint(
     if len(rows) != 1:
         raise ConversionBlocked(f"terminal fix {airport}/{ident} has {len(rows)} target waypoint matches")
     return int(rows[0][0]), float(rows[0][1]), float(rows[0][2])
+
+
+def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavModel) -> tuple[dict[tuple[str, str], tuple[int, float, float]], dict[tuple[str, str], str]]:
+    """Resolve all source terminal fixes once before projecting procedure legs."""
+    source_points: dict[tuple[str, str], set[tuple[float, float]]] = {}
+    for point in model.terminal_waypoints:
+        source_points.setdefault((point.airport, point.ident), set()).add((round(point.latitude, 9), round(point.longitude, 9)))
+    targets: dict[str, list[tuple[int, float, float]]] = {}
+    for point_id, ident, latitude, longitude in connection.execute("SELECT ID, Ident, Latitude, Longtitude FROM Waypoints"):
+        targets.setdefault(str(ident), []).append((int(point_id), float(latitude), float(longitude)))
+    resolutions: dict[tuple[str, str], tuple[int, float, float]] = {}
+    failures: dict[tuple[str, str], str] = {}
+    for key, locations in source_points.items():
+        airport, ident = key
+        if len(locations) != 1:
+            failures[key] = f"terminal fix {airport}/{ident} has {len(locations)} source locations"
+            continue
+        latitude, longitude = next(iter(locations))
+        matches = [
+            row for row in targets.get(ident, [])
+            if _distance_nm(latitude, longitude, row[1], row[2]) < 0.02
+        ]
+        if len(matches) != 1:
+            failures[key] = f"terminal fix {airport}/{ident} has {len(matches)} target waypoint matches"
+            continue
+        resolutions[key] = matches[0]
+    return resolutions, failures
 
 
 def encode_frequency(value: float, kind: str) -> int:
@@ -325,6 +352,86 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
     return {"terminal_waypoints_inserted": terminal_count, "designated_waypoints_inserted": designated_count, "navaid_waypoints_inserted": navaid_count}
 
 
+def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel) -> dict[str, object]:
+    """Insert only fully evidenced SID/STAR plans and their paired extension rows.
+
+    IAP rows need additional Fenix-only MAP and waypoint-description semantics.
+    They remain out of this source-backed path until those semantics have a
+    deterministic rule.  SID/STAR rows can be projected directly from the
+    database coding table when all referenced terminal points resolve uniquely.
+    """
+    next_terminal_id = _next_id(connection, "Terminals")
+    next_leg_id = _next_id(connection, "TerminalLegs")
+    airport_ids = dict(connection.execute("SELECT ICAO, ID FROM Airports"))
+    runway_ids = {
+        (airport_id, ident): runway_id
+        for runway_id, airport_id, ident in connection.execute("SELECT ID, AirportID, Ident FROM Runways")
+    }
+    existing = {
+        (str(icao), str(proc), str(name), str(runway or ""))
+        for icao, proc, name, runway in connection.execute("SELECT ICAO, Proc, Name, Rwy FROM Terminals")
+    }
+    inserted_terminals = 0
+    inserted_legs = 0
+    rejected: list[dict[str, object]] = []
+    waypoint_resolutions, waypoint_failures = _terminal_waypoint_resolutions(connection, model)
+    for segment in model.procedure_segments:
+        try:
+            procedure_type, name, runway = fenix_terminal_identity(segment)
+        except ValueError as error:
+            rejected.append({"airport": segment.airport, "label": segment.label, "reason": str(error), "source": asdict(segment.source)})
+            continue
+        if procedure_type == "3":
+            continue
+        identity = (segment.airport, procedure_type, name, runway)
+        if identity in existing:
+            continue
+        airport_id = airport_ids.get(segment.airport)
+        runway_id = runway_ids.get((airport_id, runway)) if airport_id is not None else None
+        if airport_id is None or runway_id is None:
+            rejected.append({"airport": segment.airport, "label": segment.label, "reason": "missing target airport or runway", "source": asdict(segment.source)})
+            continue
+        transition = f"RW{runway}"
+        try:
+            projections = []
+            for leg in segment.legs:
+                key = (segment.airport, leg.fix_ident) if leg.fix_ident else None
+                if key and key in waypoint_failures:
+                    raise ConversionBlocked(waypoint_failures[key])
+                if key and key not in waypoint_resolutions:
+                    raise ConversionBlocked(f"terminal fix {segment.airport}/{leg.fix_ident} has no source coordinate evidence")
+                projections.append(project_database_terminal_leg(
+                    leg, procedure_type, transition, waypoint_resolutions[key] if key else None,
+                ))
+        except (ConversionBlocked, ValueError) as error:
+            rejected.append({"airport": segment.airport, "label": segment.label, "reason": str(error), "source": asdict(segment.source)})
+            continue
+        connection.execute(
+            "INSERT INTO Terminals VALUES (?,?,?,?,?,?,?,?,?)",
+            (next_terminal_id, airport_id, procedure_type, segment.airport, name, name, runway, runway_id, 0),
+        )
+        for projection in projections:
+            connection.execute(
+                "INSERT INTO TerminalLegsEx VALUES (?,?,?,?)",
+                (next_leg_id, 0, projection.speed_limit, projection.speed_limit_description),
+            )
+            connection.execute(
+                "INSERT INTO TerminalLegs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    next_leg_id, next_terminal_id, projection.type_code, projection.transition, projection.track_code,
+                    projection.waypoint_id, projection.waypoint_latitude, projection.waypoint_longitude,
+                    projection.turn_direction, None, None, None, None, None, projection.course, None,
+                    projection.altitude, None, None, None, None, projection.waypoint_description,
+                ),
+            )
+            next_leg_id += 1
+            inserted_legs += 1
+        existing.add(identity)
+        next_terminal_id += 1
+        inserted_terminals += 1
+    return {"terminal_procedures_inserted": inserted_terminals, "terminal_legs_inserted": inserted_legs, "terminal_procedure_rejections": rejected}
+
+
 def _copy_navdata(official: Path, output: Path) -> Path:
     if output.exists():
         raise FileExistsError(f"输出目录已经存在: {output}")
@@ -371,6 +478,8 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
     counts = {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways, "navaids_inserted": navaids}
     if model.terminal_waypoints or model.waypoints or model.navaids:
         counts.update(_insert_waypoints(connection, model, navaid_additions))
+    if model.procedure_segments:
+        counts.update(_insert_terminal_procedures(connection, model))
     return counts
 
 
@@ -388,10 +497,14 @@ def convert(official_navdata: Path, model: NavModel, output: Path, reference: Pa
             counts = _insert_model(connection, model)
             connection.commit()
             connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        incomplete = bool(model.rejected_procedures or model.rejected_records)
+        terminal_rejections = counts.pop("terminal_procedure_rejections")
+        incomplete = bool(model.rejected_procedures or model.rejected_records or terminal_rejections)
+        if terminal_rejections and not allow_incomplete:
+            raise ConversionBlocked(f"terminal procedure projection rejected {len(terminal_rejections)} segments")
         report = {"status": "incomplete" if incomplete else "candidate", "test_build": True, "deployable": not incomplete,
                   "profile": profile["config"], "counts": counts, "rejected_procedures": [asdict(item) for item in model.rejected_procedures],
                   "rejected_records": [asdict(item) for item in model.rejected_records],
+                  "terminal_procedure_rejections": terminal_rejections,
                   "terminal_waypoint_evidence": len(model.terminal_waypoints),
                   "terminal_database_chart_evidence": len(model.procedure_charts),
                   "terminal_database_leg_evidence": sum(len(chart.terminal_legs) for chart in model.procedure_charts),
