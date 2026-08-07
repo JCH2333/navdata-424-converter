@@ -126,9 +126,19 @@ def waypoint_country(fir: str, latitude: float | None = None, longitude: float |
     raise ValueError(f"unmapped empty waypoint FIR at {latitude}, {longitude}")
 
 
-def load_naip(root: Path) -> NavModel:
+def _validate_pdf_cache(root: Path, pdf_cache: Path | None) -> Path | None:
+    if pdf_cache is None:
+        return None
+    resolved_cache = pdf_cache.resolve()
+    if resolved_cache.is_relative_to(root):
+        raise ValueError("PDF 证据缓存不得写入 NAIP 原始数据目录")
+    return resolved_cache
+
+
+def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
     """Load only structured data; PDFs are inspected separately and never guessed."""
     root = root.resolve()
+    pdf_cache = _validate_pdf_cache(root, pdf_cache)
     model = NavModel(root=root)
     for row_number, row in enumerate(_rows(root / "AD_HP.csv"), start=2):
         icao = (row.get("CODE_ID") or "").strip().upper()
@@ -183,15 +193,15 @@ def load_naip(root: Path) -> NavModel:
     for row_number, row in enumerate(_rows(root / "RTE_SEG.csv"), start=2):
         model.airway_legs.append(AirwayLeg(row.get("TXT_DESIG") or "", _number(row.get("VAL_SORT") or "0"),
             row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number)))
-    _load_terminal_coordinate_pages(model)
-    _load_terminal_database_charts(model)
-    _load_terminal_approach_charts(model)
-    _load_terminal_standard_procedure_charts(model)
+    _load_terminal_coordinate_pages(model, pdf_cache)
+    _load_terminal_database_charts(model, pdf_cache)
+    _load_terminal_approach_charts(model, pdf_cache)
+    _load_terminal_standard_procedure_charts(model, pdf_cache)
     _reject_unparsed_charts(model)
     return model
 
 
-def _load_terminal_coordinate_pages(model: NavModel) -> None:
+def _load_terminal_coordinate_pages(model: NavModel, pdf_cache: Path | None = None) -> None:
     """Load coordinate-page evidence without treating it as structured NAIP data.
 
     Coordinate pages are indexed in each airport's Charts.csv.  A page is
@@ -202,7 +212,7 @@ def _load_terminal_coordinate_pages(model: NavModel) -> None:
     if not terminal.is_dir():
         return
     for airport_directory in sorted(path for path in terminal.iterdir() if path.is_dir()):
-        charts = extract_airport_coordinate_pages(airport_directory)
+        charts = extract_airport_coordinate_pages(airport_directory) if pdf_cache is None else extract_airport_coordinate_pages(airport_directory, pdf_cache)
         if not charts:
             continue
         points = [point for chart in charts for point in chart.fix_coordinates if point.ident]
@@ -224,31 +234,34 @@ def _load_terminal_coordinate_pages(model: NavModel) -> None:
                 ))
 
 
-def _load_terminal_database_charts(model: NavModel) -> None:
+def _load_terminal_database_charts(model: NavModel, pdf_cache: Path | None = None) -> None:
     """Retain database-coding leg evidence for later Fenix procedure mapping."""
     terminal = model.root / "Terminal"
     if not terminal.is_dir():
         return
     for airport_directory in sorted(path for path in terminal.iterdir() if path.is_dir()):
-        model.procedure_charts.extend(extract_airport_database_charts(airport_directory))
+        extractor = extract_airport_database_charts
+        model.procedure_charts.extend(extractor(airport_directory) if pdf_cache is None else extractor(airport_directory, pdf_cache))
 
 
-def _load_terminal_approach_charts(model: NavModel) -> None:
+def _load_terminal_approach_charts(model: NavModel, pdf_cache: Path | None = None) -> None:
     """Retain instrument-approach index pages before leg decoding exists."""
     terminal = model.root / "Terminal"
     if not terminal.is_dir():
         return
     for airport_directory in sorted(path for path in terminal.iterdir() if path.is_dir()):
-        model.procedure_charts.extend(extract_airport_approach_charts(airport_directory))
+        extractor = extract_airport_approach_charts
+        model.procedure_charts.extend(extractor(airport_directory) if pdf_cache is None else extractor(airport_directory, pdf_cache))
 
 
-def _load_terminal_standard_procedure_charts(model: NavModel) -> None:
+def _load_terminal_standard_procedure_charts(model: NavModel, pdf_cache: Path | None = None) -> None:
     """Retain SID/STAR chart text as source waypoint-label evidence."""
     terminal = model.root / "Terminal"
     if not terminal.is_dir():
         return
     for airport_directory in sorted(path for path in terminal.iterdir() if path.is_dir()):
-        model.procedure_charts.extend(extract_airport_standard_procedure_charts(airport_directory))
+        extractor = extract_airport_standard_procedure_charts
+        model.procedure_charts.extend(extractor(airport_directory) if pdf_cache is None else extractor(airport_directory, pdf_cache))
 
 
 def _reject_unparsed_charts(model: NavModel) -> None:

@@ -11,7 +11,7 @@
 ```powershell
 python -m pip install -e .
 python -m navdata_converter.gui
-python -m navdata_converter.cli convert --official-navdata C:\ProgramData\Fenix\Navdata --naip-root <2608\2608> --output <新目录>
+python -m navdata_converter.cli convert --official-navdata C:\ProgramData\Fenix\Navdata --naip-root <2608\2608> --output <新目录> --pdf-cache <输出目录\pdf-evidence-cache>
 ```
 
 候选必须通过校验并且没有被拒绝的程序，才会允许部署。部署前会检查 `FlightSimulator2024.exe` 已退出，并备份数据库与周期元数据。

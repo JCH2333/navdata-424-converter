@@ -19,7 +19,7 @@ def _chart_payload(chart: object) -> dict[str, object]:
 
 
 def _convert(args: argparse.Namespace) -> int:
-    model = load_naip(Path(args.naip_root))
+    model = load_naip(Path(args.naip_root), Path(args.pdf_cache) if args.pdf_cache else None)
     try:
         report = convert(Path(args.official_navdata), model, Path(args.output), Path(args.reference) if args.reference else None, allow_incomplete=args.allow_incomplete)
     except ConversionBlocked as error:
@@ -38,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     conversion.add_argument("--naip-root", required=True)
     conversion.add_argument("--output", required=True)
     conversion.add_argument("--reference")
+    conversion.add_argument("--pdf-cache", help="PDF 证据缓存目录；不得位于 NAIP 原始数据目录")
     conversion.add_argument("--allow-incomplete", action="store_true", help="generate a non-deployable diagnostic candidate")
     conversion.set_defaults(handler=_convert)
     validation = commands.add_parser("validate")

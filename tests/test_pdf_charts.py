@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
+from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, ProcedureChart, SourceRef
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -184,3 +185,27 @@ def test_standard_procedure_chart_selection_uses_sid_and_star_index_types(monkey
 
     assert extract_airport_standard_procedure_charts(airport) == []
     assert calls == [("ZYYK-3A.pdf", "standard-terminal-procedure", "SID RWY04"), ("ZYYK-4A.pdf", "standard-terminal-procedure", "STAR RWY22")]
+
+
+def test_pdf_evidence_cache_restores_every_chart_field_without_reopening_pdf(tmp_path):
+    pdf = tmp_path / "ZYYK-4Z01.pdf"
+    pdf.write_bytes(b"immutable source bytes")
+    source = SourceRef(str(pdf), 1, 1, "source-hash")
+    expected = ProcedureChart(
+        "ZYYK", pdf.name, 1, "terminal-database-coding", "database", "text-hash", ("BM-09D",), ("04",), ("YK551",),
+        (ChartTerminalLeg("BM-09D", "04", "CF", "YK551", "CF YK551", "departure", 37.0, 900.0, "L", 220),),
+        (ChartFixCoordinate("YK551", 40.5, 122.4, "N40 30 E122 24"),), source,
+    )
+    calls = 0
+
+    def extractor(*_args):
+        nonlocal calls
+        calls += 1
+        return [expected]
+
+    cache = tmp_path / "cache"
+    first = _cached_extract(pdf, "ZYYK", "terminal-database-coding", "database", cache, extractor)
+    second = _cached_extract(pdf, "ZYYK", "terminal-database-coding", "database", cache, extractor)
+
+    assert first == second == [expected]
+    assert calls == 1

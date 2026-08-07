@@ -8,15 +8,20 @@ chart until an explicit mapping is implemented and tested.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import csv
 from dataclasses import replace
 from pathlib import Path
+from typing import Callable
 
 import pymupdf
 from pypdf import PdfReader
 
 from .model import ChartFixCoordinate, ChartTerminalLeg, ProcedureChart, SourceRef
+
+
+_EVIDENCE_CACHE_VERSION = 1
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -269,6 +274,62 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str
     return result
 
 
+def _chart_to_payload(chart: ProcedureChart) -> dict[str, object]:
+    return {
+        "airport": chart.airport,
+        "filename": chart.filename,
+        "page": chart.page,
+        "chart_type": chart.chart_type,
+        "chart_name": chart.chart_name,
+        "text_sha256": chart.text_sha256,
+        "procedure_labels": list(chart.procedure_labels),
+        "runways": list(chart.runways),
+        "waypoints": list(chart.waypoints),
+        "terminal_legs": [leg.__dict__ for leg in chart.terminal_legs],
+        "fix_coordinates": [point.__dict__ for point in chart.fix_coordinates],
+        "source": chart.source.__dict__,
+    }
+
+
+def _chart_from_payload(payload: dict[str, object]) -> ProcedureChart:
+    return ProcedureChart(
+        airport=str(payload["airport"]), filename=str(payload["filename"]), page=int(payload["page"]),
+        chart_type=str(payload["chart_type"]), chart_name=str(payload["chart_name"]),
+        text_sha256=str(payload["text_sha256"]), procedure_labels=tuple(payload["procedure_labels"]),
+        runways=tuple(payload["runways"]), waypoints=tuple(payload["waypoints"]),
+        terminal_legs=tuple(ChartTerminalLeg(**item) for item in payload["terminal_legs"]),
+        fix_coordinates=tuple(ChartFixCoordinate(**item) for item in payload["fix_coordinates"]),
+        source=SourceRef(**payload["source"]),
+    )
+
+
+def _cached_extract(
+    pdf: Path, airport: str, chart_type: str, chart_name: str, cache_dir: Path | None,
+    extractor: Callable[[Path, str, str, str], list[ProcedureChart]],
+) -> list[ProcedureChart]:
+    """Cache exact chart evidence outside the immutable NAIP source tree."""
+    if cache_dir is None:
+        return extractor(pdf, airport, chart_type, chart_name)
+    file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    key_material = json.dumps({
+        "version": _EVIDENCE_CACHE_VERSION, "pdf_sha256": file_hash, "airport": airport,
+        "chart_type": chart_type, "chart_name": chart_name, "extractor": extractor.__name__,
+    }, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    cache_file = cache_dir / f"{hashlib.sha256(key_material.encode('utf-8')).hexdigest()}.json"
+    try:
+        payload = json.loads(cache_file.read_text(encoding="utf-8"))
+        if payload["key"] == key_material:
+            return [_chart_from_payload(item) for item in payload["charts"]]
+    except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        pass
+    charts = extractor(pdf, airport, chart_type, chart_name)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    temporary = cache_file.with_suffix(".tmp")
+    temporary.write_text(json.dumps({"key": key_material, "charts": [_chart_to_payload(chart) for chart in charts]}, ensure_ascii=False, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+    temporary.replace(cache_file)
+    return charts
+
+
 def _chart_from_text(pdf: Path, airport: str, chart_type: str, chart_name: str, page_number: int, text: str, file_hash: str, coordinate_text: str | None = None) -> ProcedureChart:
     labels = tuple(sorted(set(_PROCEDURE.findall(text))))
     runways = _extract_runways(f"{chart_name}\n{text}")
@@ -312,7 +373,7 @@ def extract_airport_charts(airport_directory: Path) -> list[ProcedureChart]:
     return charts
 
 
-def extract_airport_database_charts(airport_directory: Path) -> list[ProcedureChart]:
+def extract_airport_database_charts(airport_directory: Path, cache_dir: Path | None = None) -> list[ProcedureChart]:
     """Extract only index-declared database-coding pages with PyMuPDF.
 
     These pages carry printed procedure leg tables.  They are intentionally
@@ -331,7 +392,7 @@ def extract_airport_database_charts(airport_directory: Path) -> list[ProcedureCh
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            charts.extend(extract_database_chart(pdf, airport, "terminal-database-coding", chart_name))
+            charts.extend(_cached_extract(pdf, airport, "terminal-database-coding", chart_name, cache_dir, extract_database_chart))
     return charts
 
 
@@ -347,7 +408,7 @@ def _is_instrument_approach_index_row(row: dict[str, str]) -> bool:
     return "\u4eea\u8868\u8fdb\u8fd1\u56fe" in chart_type or "\u8fdb\u8fd1\u56fe_" in chart_type or "\u8fdb\u8fd1\u56fe_" in chart_name
 
 
-def extract_airport_approach_charts(airport_directory: Path) -> list[ProcedureChart]:
+def extract_airport_approach_charts(airport_directory: Path, cache_dir: Path | None = None) -> list[ProcedureChart]:
     """Extract index-declared instrument approach pages as source evidence.
 
     These charts are intentionally not interpreted as Fenix terminal legs.
@@ -367,7 +428,7 @@ def extract_airport_approach_charts(airport_directory: Path) -> list[ProcedureCh
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            charts.extend(extract_approach_chart(pdf, airport, "instrument-approach-index", chart_name))
+            charts.extend(_cached_extract(pdf, airport, "instrument-approach-index", chart_name, cache_dir, extract_approach_chart))
     return charts
 
 
@@ -379,7 +440,7 @@ def _is_standard_procedure_index_row(row: dict[str, str]) -> bool:
     return "\u6807\u51c6\u4eea\u8868\u79bb\u573a\u56fe" in chart_type or "\u6807\u51c6\u4eea\u8868\u8fdb\u573a\u56fe" in chart_type
 
 
-def extract_airport_standard_procedure_charts(airport_directory: Path) -> list[ProcedureChart]:
+def extract_airport_standard_procedure_charts(airport_directory: Path, cache_dir: Path | None = None) -> list[ProcedureChart]:
     """Extract index-declared SID/STAR pages as waypoint-label evidence."""
     index = airport_directory / "Charts.csv"
     if not index.is_file():
@@ -393,7 +454,7 @@ def extract_airport_standard_procedure_charts(airport_directory: Path) -> list[P
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            charts.extend(extract_approach_chart(pdf, airport, "standard-terminal-procedure", chart_name))
+            charts.extend(_cached_extract(pdf, airport, "standard-terminal-procedure", chart_name, cache_dir, extract_approach_chart))
     return charts
 
 
@@ -407,7 +468,7 @@ def _chart_rows(index: Path) -> list[dict[str, str]]:
     raise ValueError(f"unsupported chart-index encoding: {index}")  # pragma: no cover
 
 
-def extract_airport_coordinate_pages(airport_directory: Path) -> list[ProcedureChart]:
+def extract_airport_coordinate_pages(airport_directory: Path, cache_dir: Path | None = None) -> list[ProcedureChart]:
     """Extract only index-declared terminal waypoint coordinate pages."""
     index = airport_directory / "Charts.csv"
     if not index.is_file():
@@ -421,7 +482,7 @@ def extract_airport_coordinate_pages(airport_directory: Path) -> list[ProcedureC
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            charts.extend(extract_coordinate_chart(pdf, airport, "terminal-coordinate-page", chart_name))
+            charts.extend(_cached_extract(pdf, airport, "terminal-coordinate-page", chart_name, cache_dir, extract_coordinate_chart))
     return charts
 
 

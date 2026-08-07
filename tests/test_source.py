@@ -1,5 +1,7 @@
 from navdata_converter.model import ChartFixCoordinate, NavModel, ProcedureChart, SourceRef
-from navdata_converter.source import _feet, _load_terminal_coordinate_pages, _rows, _surface, navaid_country, parse_dms, romanize_name, waypoint_country
+import pytest
+
+from navdata_converter.source import _feet, _load_terminal_coordinate_pages, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -49,6 +51,16 @@ def test_waypoint_country_uses_naip_fir_prefix():
 def test_nav_model_keeps_rejected_source_records_for_reporting(tmp_path):
     model = NavModel(tmp_path)
     assert model.rejected_records == []
+
+
+def test_pdf_evidence_cache_cannot_be_written_into_naip_source(tmp_path):
+    root = tmp_path / "2608"
+    root.mkdir()
+
+    with pytest.raises(ValueError, match="不得写入"):
+        _validate_pdf_cache(root, root / "pdf-evidence-cache")
+
+    assert _validate_pdf_cache(root, tmp_path / "cache") == (tmp_path / "cache").resolve()
 
 
 def test_terminal_coordinate_pages_preserve_pdf_sources(monkeypatch, tmp_path):
