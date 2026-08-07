@@ -2,8 +2,8 @@ import json
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model, build_rejection_report, encode_frequency, runway_threshold
-from navdata_converter.model import Airport, NavModel, RejectedRecord, Runway, SourceRef
+from navdata_converter.fenix import _insert_model, build_rejection_report, encode_frequency, missing_navaids, runway_threshold
+from navdata_converter.model import Airport, Navaid, NavModel, RejectedRecord, Runway, SourceRef
 
 
 def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path):
@@ -12,6 +12,8 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
         CREATE TABLE Airports (ID INTEGER, Name TEXT, ICAO TEXT, PrimaryID INTEGER, Latitude REAL, Longtitude REAL, Elevation INTEGER, TransitionAltitude INTEGER, TransitionLevel INTEGER, SpeedLimit INTEGER, SpeedLimitAltitude INTEGER);
         CREATE TABLE AirportLookup (extID TEXT, ID INTEGER);
         CREATE TABLE Runways (ID INTEGER, AirportID INTEGER, Ident TEXT, TrueHeading REAL, Length INTEGER, Width INTEGER, Surface TEXT, Latitude REAL, Longtitude REAL, Elevation INTEGER);
+        CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Name TEXT, Freq INTEGER, Channel TEXT, Usage TEXT, Latitude REAL, Longtitude REAL, Elevation INTEGER, SlavedVar REAL, MagneticVariation REAL, Range INTEGER);
+        CREATE TABLE NavaidLookup (Ident TEXT, Type TEXT, Country TEXT, NavKeyCode TEXT, ID INTEGER);
         INSERT INTO Airports VALUES (10, 'BASE', 'ZBAA', NULL, 0, 0, 0, 0, 0, 250, 10000);
     """)
     source = SourceRef("fixture.csv", 1)
@@ -20,7 +22,7 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
         "new": Airport("new", "ZBCF", "new", 1, 2, 3, 4, 5, source),
     }, runways=[Runway("new-rwy", "new", "03", 30, 1000, 30, "ASP", 3, source)])
     counts = _insert_model(db, model)
-    assert counts == {"airports_inserted": 1, "airports_preserved": 1, "runways_inserted": 1}
+    assert counts == {"airports_inserted": 1, "airports_preserved": 1, "runways_inserted": 1, "navaids_inserted": 0}
     assert db.execute("SELECT ID, Name FROM Airports WHERE ICAO='ZBAA'").fetchone() == (10, "BASE")
     assert db.execute("SELECT ID FROM Airports WHERE ICAO='ZBCF'").fetchone() == (11,)
     assert db.execute("SELECT AirportID FROM Runways").fetchone() == (11,)
@@ -37,6 +39,17 @@ def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point()
 
     assert round(latitude, 4) == 40.5327
     assert round(longitude, 4) == 122.3514
+
+
+def test_missing_navaids_matches_existing_facilities_by_location_not_lookup_country(tmp_path):
+    connection = sqlite3.connect(tmp_path / "navaids.db3")
+    connection.execute("CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Latitude REAL, Longtitude REAL)")
+    connection.execute("INSERT INTO Navaids VALUES (1, 'CHF', '4', 42.19, 118.8117)")
+    source = SourceRef("VOR.csv", 2)
+    existing = Navaid("old", "CHF", "VOR", "", 42.1901, 118.8118, 113.5, 0, 0, "ZB", source)
+    foreign_collision = Navaid("new", "GAZ", "VOR", "", 38.8172, 100.6331, 113.6, 0, 0, "ZL", source)
+
+    assert missing_navaids(connection, [existing, foreign_collision]) == [foreign_collision]
 
 
 def test_rejection_report_preserves_unmapped_source_record(tmp_path):

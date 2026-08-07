@@ -7,8 +7,9 @@ import sqlite3
 from dataclasses import asdict
 from pathlib import Path
 
-from .model import NavModel, is_china_icao
+from .model import Navaid, NavModel, is_china_icao
 from .profile import validate_fenix_profile
+from .source import romanize_name
 
 
 class ConversionBlocked(RuntimeError):
@@ -58,6 +59,72 @@ def runway_threshold(latitude: float, longitude: float, true_heading: float, len
     return math.degrees(end_latitude), math.degrees(end_longitude)
 
 
+def _distance_nm(latitude1: float, longitude1: float, latitude2: float, longitude2: float) -> float:
+    latitude1, latitude2 = math.radians(latitude1), math.radians(latitude2)
+    delta_latitude = latitude2 - latitude1
+    delta_longitude = math.radians(longitude2 - longitude1)
+    haversine = math.sin(delta_latitude / 2) ** 2 + math.cos(latitude1) * math.cos(latitude2) * math.sin(delta_longitude / 2) ** 2
+    return 3_440.065 * 2 * math.asin(math.sqrt(haversine))
+
+
+def _navaid_type(navaid: Navaid) -> str:
+    return "4" if navaid.kind == "VOR" else "7"
+
+
+def missing_navaids(connection: sqlite3.Connection, navaids: list[Navaid]) -> list[Navaid]:
+    """Return source navaids absent from the official database by physical identity.
+
+    Country codes in official lookup rows are not reliable historical identity
+    keys.  A same-ident, same-class facility within one nautical mile is kept.
+    New NDBs use Fenix's observed NDB-DME type 7.
+    """
+    existing = list(connection.execute("SELECT Ident, Type, Latitude, Longtitude FROM Navaids"))
+    result: list[Navaid] = []
+    for navaid in navaids:
+        type_code = _navaid_type(navaid)
+        equivalent_types = ("4",) if type_code == "4" else ("5", "7")
+        present = any(
+            ident == navaid.ident
+            and existing_type in equivalent_types
+            and _distance_nm(navaid.latitude, navaid.longitude, latitude, longitude) < 1
+            for ident, existing_type, latitude, longitude in existing
+        )
+        if not present:
+            result.append(navaid)
+    return result
+
+
+def _insert_navaids(connection: sqlite3.Connection, navaids: list[Navaid]) -> int:
+    additions = missing_navaids(connection, navaids)
+    # The 2608 Fenix importer consumed six navaid IDs before the first emitted
+    # record.  Reserve them so the reproduced 2608 navaid IDs remain stable.
+    next_navaid_id = _next_id(connection, "Navaids") + 6
+    for navaid in additions:
+        type_code = _navaid_type(navaid)
+        is_vor = type_code == "4"
+        connection.execute(
+            "INSERT INTO Navaids VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                next_navaid_id,
+                navaid.ident,
+                type_code,
+                navaid.name if navaid.name.isascii() else romanize_name(navaid.name),
+                encode_frequency(navaid.frequency, navaid.kind),
+                None,
+                "H",
+                navaid.latitude,
+                navaid.longitude,
+                navaid.elevation_ft,
+                0.0,
+                navaid.magnetic_variation if is_vor else 0.0,
+                130 if is_vor else 50,
+            ),
+        )
+        connection.execute("INSERT INTO NavaidLookup VALUES (?,?,?,?,?)", (navaid.ident, type_code, navaid.country, "1", next_navaid_id))
+        next_navaid_id += 1
+    return len(additions)
+
+
 def _copy_navdata(official: Path, output: Path) -> Path:
     if output.exists():
         raise FileExistsError(f"输出目录已经存在: {output}")
@@ -99,7 +166,8 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
             runway.true_heading, runway.length_ft, runway.width_ft, runway.surface, threshold_latitude, threshold_longitude, runway.elevation_ft))
         next_runway += 1
         runways += 1
-    return {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways}
+    navaids = _insert_navaids(connection, model.navaids)
+    return {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways, "navaids_inserted": navaids}
 
 
 def convert(official_navdata: Path, model: NavModel, output: Path, reference: Path | None = None, *, allow_incomplete: bool = False) -> dict[str, object]:
