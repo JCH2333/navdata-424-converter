@@ -205,7 +205,7 @@ def inspect_approach_chart_coverage(model: NavModel, official: Path, reference: 
         (chart.airport.upper(), _runway_key(runway), name)
         for chart in charts
         for runway in chart.runways
-        for name in approach_procedure_name_candidates(chart.chart_name, (_runway_key(runway),))
+        for name in approach_procedure_name_candidates(chart.chart_name, (_runway_key(runway),), chart.airport)
     }
     reference_names = {
         (str(icao).upper(), _runway_key(runway), str(name or "").upper())

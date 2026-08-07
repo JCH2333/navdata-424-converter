@@ -27,6 +27,7 @@ def test_derives_conservative_fenix_approach_name_candidates_from_chart_title():
     assert approach_procedure_name_candidates("NDB/DME RWY12", ("12",)) == ("Q12",)
     assert approach_procedure_name_candidates("VOR/DME z RWY08", ("08",)) == ("D08",)
     assert approach_procedure_name_candidates("RNP y RWY16R(AR)", ("16L", "16R")) == ("R16R", "R16R-Y")
+    assert approach_procedure_name_candidates("RNP x RWY10(AR)", ("10",), "ZYTL") == ("R10", "R10-X", "R10-AR-X")
 
 
 def test_extracts_explicit_chart_coordinates_without_inventing_a_leg():

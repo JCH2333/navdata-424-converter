@@ -23,6 +23,7 @@ _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
 _RUNWAY = re.compile(r"\bRWY\s?(\d{2}[LRC]?)\b")
 _SHARED_RUNWAYS = re.compile(r"\bRWY\s?\d{2}[LRC]?(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)+\b")
 _APPROACH_VARIANT = re.compile(r"\b(?P<variant>[WXYZ])\s+RWY\s?\d{2}[LRC]?\b", re.IGNORECASE)
+_RNP_AR_LONG_NAME_AIRPORTS = {"ZYTL"}
 _WAYPOINT = re.compile(r"\b([A-Z][A-Z0-9]{1,5})\b")
 _IGNORED = {"CAAC", "ALL", "RIGHTS", "RESER", "MSA", "RNP", "ILS", "DME", "RWY", "ATC", "N", "E", "S", "W"}
 _CHART_COORDINATE = re.compile(
@@ -71,7 +72,7 @@ def _extract_runways(text: str) -> tuple[str, ...]:
     return tuple(sorted(runways))
 
 
-def approach_procedure_name_candidates(chart_name: str, runways: tuple[str, ...]) -> tuple[str, ...]:
+def approach_procedure_name_candidates(chart_name: str, runways: tuple[str, ...], airport: str = "") -> tuple[str, ...]:
     """Derive only title-supported Fenix approach-name candidates.
 
     CAAC titles explicitly carry the ILS/RNP family and X/Y/Z variant for
@@ -104,6 +105,8 @@ def approach_procedure_name_candidates(chart_name: str, runways: tuple[str, ...]
                 continue
             separator = "" if family == "I" and len(runway) > 2 else "-"
             candidates.append(f"{family}{runway}{separator}{variant}")
+            if family == "R" and "(AR)" in title and airport.upper() in _RNP_AR_LONG_NAME_AIRPORTS:
+                candidates.append(f"R{runway}-AR-{variant}")
     return tuple(dict.fromkeys(candidates))
 
 
