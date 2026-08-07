@@ -46,7 +46,7 @@ def extract_fix_coordinates(text: str) -> tuple[ChartFixCoordinate, ...]:
     return tuple(coordinates)
 
 
-def extract_chart(pdf: Path, airport: str, chart_type: str = "") -> list[ProcedureChart]:
+def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str = "") -> list[ProcedureChart]:
     """Extract text from every page and retain labels with reproducible hashes."""
     reader = PdfReader(pdf)
     result: list[ProcedureChart] = []
@@ -54,13 +54,14 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "") -> list[Procedu
     for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text(extraction_mode="layout") or ""
         labels = tuple(sorted(set(_PROCEDURE.findall(text))))
-        runways = tuple(sorted(set(_RUNWAY.findall(text))))
+        runways = tuple(sorted(set(_RUNWAY.findall(f"{chart_name}\n{text}"))))
         waypoints = tuple(sorted({token for token in _WAYPOINT.findall(text) if token not in _IGNORED and not token.isdigit()}))
         result.append(ProcedureChart(
             airport=airport,
             filename=pdf.name,
             page=page_number,
             chart_type=chart_type,
+            chart_name=chart_name,
             text_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
             procedure_labels=labels,
             runways=runways,
@@ -90,11 +91,12 @@ def extract_airport_charts(airport_directory: Path) -> list[ProcedureChart]:
     for row in rows:
         page = (row.get("PAGE_NUMBER") or "").strip()
         chart_type = (row.get("ChartTypeEx_CH") or "").strip()
+        chart_name = (row.get("ChartName") or "").strip()
         # Page numbers are the stable cross-encoding contract.  Classifying the
         # chart happens from extracted labels rather than locale-dependent text.
         if not page:
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            charts.extend(extract_chart(pdf, airport, chart_type))
+            charts.extend(extract_chart(pdf, airport, chart_type, chart_name))
     return charts

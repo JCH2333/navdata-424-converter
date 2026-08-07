@@ -101,6 +101,7 @@ class ProcedureChart:
     filename: str
     page: int
     chart_type: str
+    chart_name: str
     text_sha256: str
     procedure_labels: tuple[str, ...]
     runways: tuple[str, ...]
