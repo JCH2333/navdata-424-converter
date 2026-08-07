@@ -151,6 +151,14 @@ def test_splits_multiple_rf_rows_compressed_into_one_pdf_text_line():
     ]
 
 
+def test_extracts_inline_holding_course_altitude_turn_and_speed():
+    evidence = extract_terminal_leg_evidence("RWY03 进场 KAKAT-9ZA\nHM CF402 Y 097 L 2122 MAX205")
+
+    assert [(item.leg_type, item.fix_ident, item.course_degrees, item.altitude_meters, item.turn_direction, item.speed_limit_knots) for item in evidence] == [
+        ("HM", "CF402", 97.0, 2122.0, "L", 205),
+    ]
+
+
 def test_pairs_coordinate_page_columns_only_when_counts_match():
     text = "YK401\nBM\nN40°35'40\"E121°48'14\"\nN39°39.4'E121°44.8'"
 

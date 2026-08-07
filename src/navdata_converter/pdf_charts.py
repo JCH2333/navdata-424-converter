@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 10
+_EVIDENCE_CACHE_VERSION = 11
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -318,6 +318,15 @@ def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_id
         course = numeric[0]
     elif leg_type == "DF" and numeric:
         altitude = numeric[0]
+    elif leg_type == "HM":
+        inline_values = lines[start].replace(",", " ").split()
+        inline_turn = next((value for value in inline_values if value in {"L", "R"}), None)
+        inline_speed_match = re.search(r"\bMAX(\d{2,3})\b", lines[start], re.IGNORECASE)
+        inline_numeric = [float(value) for value in inline_values if value.isdecimal()]
+        course = inline_numeric[0] if inline_numeric else None
+        altitude = inline_numeric[1] if len(inline_numeric) > 1 else None
+        turn_direction = turn_direction or inline_turn
+        speed = speed or (int(inline_speed_match.group(1)) if inline_speed_match else None)
     return course, altitude, turn_direction, speed
 
 
