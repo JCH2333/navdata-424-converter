@@ -172,11 +172,13 @@ def test_standard_procedure_chart_selection_uses_sid_and_star_index_types(monkey
         "ChartName,ChartTypeEx_CH,PAGE_NUMBER\n"
         "SID RWY04,\u6807\u51c6\u4eea\u8868\u79bb\u573a\u56fe,3A\n"
         "STAR RWY22,\u6807\u51c6\u4eea\u8868\u8fdb\u573a\u56fe,4A\n"
+        "\u6570\u636e\u5e93\u7f16\u7801,\u6807\u51c6\u4eea\u8868\u8fdb\u573a\u56fe,4Z01\n"
         "ILS RWY04,\u4eea\u8868\u8fdb\u8fd1\u56fe,5A\n",
         encoding="utf-8",
     )
     (airport / "ZYYK-3A.pdf").write_bytes(b"placeholder")
     (airport / "ZYYK-4A.pdf").write_bytes(b"placeholder")
+    (airport / "ZYYK-4Z01.pdf").write_bytes(b"placeholder")
     calls = []
     monkeypatch.setattr("navdata_converter.pdf_charts.extract_approach_chart", lambda pdf, airport_code, chart_type, chart_name: calls.append((pdf.name, chart_type, chart_name)) or [])
 

@@ -373,6 +373,9 @@ def extract_airport_approach_charts(airport_directory: Path) -> list[ProcedureCh
 
 def _is_standard_procedure_index_row(row: dict[str, str]) -> bool:
     chart_type = (row.get("ChartTypeEx_CH") or "").strip()
+    chart_name = (row.get("ChartName") or "").strip()
+    if "\u6570\u636e\u5e93\u7f16\u7801" in chart_name or "\u822a\u8def\u70b9\u5750\u6807" in chart_name:
+        return False
     return "\u6807\u51c6\u4eea\u8868\u79bb\u573a\u56fe" in chart_type or "\u6807\u51c6\u4eea\u8868\u8fdb\u573a\u56fe" in chart_type
 
 
