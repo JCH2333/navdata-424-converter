@@ -2,7 +2,7 @@ import json
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model, build_rejection_report, encode_frequency
+from navdata_converter.fenix import _insert_model, build_rejection_report, encode_frequency, runway_threshold
 from navdata_converter.model import Airport, NavModel, RejectedRecord, Runway, SourceRef
 
 
@@ -30,6 +30,13 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
 def test_fenix_navaid_frequency_uses_observed_bcd_contract():
     assert encode_frequency(112.4, "VOR") == 0x01124000
     assert encode_frequency(495, "NDB") == 0x04950000
+
+
+def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():
+    latitude, longitude = runway_threshold(40.5425, 122.3586111111111, 29, 8202)
+
+    assert round(latitude, 4) == 40.5327
+    assert round(longitude, 4) == 122.3514
 
 
 def test_rejection_report_preserves_unmapped_source_record(tmp_path):

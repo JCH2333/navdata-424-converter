@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import shutil
 import sqlite3
 from dataclasses import asdict
@@ -32,6 +33,29 @@ def encode_frequency(value: float, kind: str) -> int:
 
 def _next_id(connection: sqlite3.Connection, table: str) -> int:
     return int(connection.execute(f"SELECT COALESCE(MAX(ID), 0) + 1 FROM {table}").fetchone()[0])
+
+
+def runway_threshold(latitude: float, longitude: float, true_heading: float, length_ft: int) -> tuple[float, float]:
+    """Estimate a runway-designator threshold from the airport reference point.
+
+    NAIP supplies an airport reference point, runway length and the direction
+    from that threshold.  Fenix stores the threshold, so travel half the length
+    in the reciprocal direction on a spherical earth.
+    """
+    radius_m = 6_371_008.8
+    angular_distance = length_ft * 0.3048 / 2 / radius_m
+    bearing = math.radians((true_heading + 180) % 360)
+    start_latitude = math.radians(latitude)
+    start_longitude = math.radians(longitude)
+    end_latitude = math.asin(
+        math.sin(start_latitude) * math.cos(angular_distance)
+        + math.cos(start_latitude) * math.sin(angular_distance) * math.cos(bearing)
+    )
+    end_longitude = start_longitude + math.atan2(
+        math.sin(bearing) * math.sin(angular_distance) * math.cos(start_latitude),
+        math.cos(angular_distance) - math.sin(start_latitude) * math.sin(end_latitude),
+    )
+    return math.degrees(end_latitude), math.degrees(end_longitude)
 
 
 def _copy_navdata(official: Path, output: Path) -> Path:
@@ -68,8 +92,11 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
         if runway.airport_key not in inserted_airports:
             continue
         airport = model.airports[runway.airport_key]
+        threshold_latitude, threshold_longitude = runway_threshold(
+            airport.latitude, airport.longitude, runway.true_heading, runway.length_ft
+        )
         connection.execute("INSERT INTO Runways VALUES (?,?,?,?,?,?,?,?,?,?)", (next_runway, airport_ids[runway.airport_key], runway.ident,
-            runway.true_heading, runway.length_ft, runway.width_ft, runway.surface, airport.latitude, airport.longitude, runway.elevation_ft))
+            runway.true_heading, runway.length_ft, runway.width_ft, runway.surface, threshold_latitude, threshold_longitude, runway.elevation_ft))
         next_runway += 1
         runways += 1
     return {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways}
