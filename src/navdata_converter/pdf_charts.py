@@ -152,8 +152,8 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         )
         active_rows = []
 
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
+    lines = [raw_line.strip() for raw_line in text.splitlines()]
+    for line_number, line in enumerate(lines):
         heading = _DATABASE_PROCEDURE.search(line)
         if heading:
             flush()
@@ -165,7 +165,9 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         leg = _DATABASE_LEG.match(line)
         if not leg:
             continue
-        row = (leg["leg_type"], leg["fix"], line)
+        next_line = lines[line_number + 1] if line_number + 1 < len(lines) else ""
+        fix_ident = leg["fix"] or (next_line if _COORDINATE_PAGE_IDENT.fullmatch(next_line) and next_line not in _IGNORED else None)
+        row = (leg["leg_type"], fix_ident, line if leg["fix"] else f"{line} {next_line}".rstrip())
         if leg["leg_type"] in {"CF", "CA"} and active_rows:
             pending_rows.append(row)
         elif active_label:
@@ -231,6 +233,29 @@ def extract_airport_charts(airport_directory: Path) -> list[ProcedureChart]:
     return charts
 
 
+def extract_airport_database_charts(airport_directory: Path) -> list[ProcedureChart]:
+    """Extract only index-declared database-coding pages with PyMuPDF.
+
+    These pages carry printed procedure leg tables.  They are intentionally
+    separated from coordinate pages so later waypoint selection can be based
+    on observable procedure use rather than every point printed on a chart.
+    """
+    index = airport_directory / "Charts.csv"
+    if not index.is_file():
+        raise FileNotFoundError(f"missing chart index: {index}")
+    airport = airport_directory.resolve().name.upper()
+    charts: list[ProcedureChart] = []
+    for row in _chart_rows(index):
+        page = (row.get("PAGE_NUMBER") or "").strip()
+        chart_name = (row.get("ChartName") or "").strip()
+        if not page or "数据库编码" not in chart_name:
+            continue
+        pdf = airport_directory / f"{airport}-{page}.pdf"
+        if pdf.is_file():
+            charts.extend(extract_database_chart(pdf, airport, "terminal-database-coding", chart_name))
+    return charts
+
+
 def _chart_rows(index: Path) -> list[dict[str, str]]:
     raw = index.read_bytes()
     for encoding in ("utf-8-sig", "gbk"):
@@ -269,4 +294,14 @@ def extract_coordinate_chart(pdf: Path, airport: str, chart_type: str, chart_nam
             chart = _chart_from_text(pdf, airport, chart_type, chart_name, page_number, text, file_hash)
             positioned = extract_positioned_coordinate_page_points(page.get_text("words"))
             result.append(replace(chart, fix_coordinates=positioned or chart.fix_coordinates))
+    return result
+
+
+def extract_database_chart(pdf: Path, airport: str, chart_type: str, chart_name: str) -> list[ProcedureChart]:
+    """Use fast text extraction for database-coding procedure tables."""
+    file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    result: list[ProcedureChart] = []
+    with pymupdf.open(pdf) as document:
+        for page_number, page in enumerate(document, start=1):
+            result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, page.get_text(), file_hash))
     return result

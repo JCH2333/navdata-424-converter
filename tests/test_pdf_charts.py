@@ -1,4 +1,4 @@
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_rows, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_rows, extract_airport_database_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -27,6 +27,12 @@ def test_extracts_database_chart_rows_with_their_confirming_procedure_heading():
         ("BM-09D", "04", "CF", "YK551"),
         ("BM-09D", "04", "DF", "YK404"),
     ]
+
+
+def test_extracts_fix_from_next_line_when_pdf_table_columns_are_separate():
+    evidence = extract_terminal_leg_evidence("CF\nYK551\nRWY04 离场 P389-09D\nDF\nYK404\nTF\nP389")
+
+    assert [(item.leg_type, item.fix_ident) for item in evidence] == [("CF", "YK551"), ("DF", "YK404"), ("TF", "P389")]
 
 
 def test_pairs_coordinate_page_columns_only_when_counts_match():
@@ -78,3 +84,17 @@ def test_chart_rows_decode_utf8_index(tmp_path):
     index.write_text("ChartName,PAGE_NUMBER\n航路点坐标,4Y01\n", encoding="utf-8")
 
     assert _chart_rows(index) == [{"ChartName": "航路点坐标", "PAGE_NUMBER": "4Y01"}]
+
+
+def test_database_chart_selection_uses_only_database_coding_index_rows(monkeypatch, tmp_path):
+    airport = tmp_path / "ZBAD"
+    airport.mkdir()
+    (airport / "Charts.csv").write_text(
+        "ChartName,PAGE_NUMBER\n数据库编码,4Z01\n航路点坐标,4Y01\n", encoding="utf-8"
+    )
+    (airport / "ZBAD-4Z01.pdf").write_bytes(b"placeholder")
+    calls = []
+    monkeypatch.setattr("navdata_converter.pdf_charts.extract_database_chart", lambda pdf, *args: calls.append(pdf.name) or [])
+
+    assert extract_airport_database_charts(airport) == []
+    assert calls == ["ZBAD-4Z01.pdf"]
