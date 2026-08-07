@@ -40,6 +40,10 @@ def test_navaid_country_prefers_serviced_airport_and_falls_back_to_fir():
 
 def test_waypoint_country_uses_naip_fir_prefix():
     assert waypoint_country("\u5e7f\u5dde\u60c5\u62a5\u533a") == "ZG"
+    assert waypoint_country("", 27.438889, 122.421944) == "RC"
+    assert waypoint_country("", 31.83, 125.0) == "RK"
+    assert waypoint_country("", 31.91, 106.05) == "CN"
+    assert waypoint_country("", 48.515, 115.786667, "SARUL") == "ZB"
 
 
 def test_nav_model_keeps_rejected_source_records_for_reporting(tmp_path):

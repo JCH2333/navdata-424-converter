@@ -78,3 +78,32 @@ def test_waypoint_phases_keep_designated_collocation_observable(tmp_path):
 
     assert counts == {"terminal_waypoints_inserted": 1, "designated_waypoints_inserted": 1, "navaid_waypoints_inserted": 0}
     assert connection.execute("SELECT ID, Ident, Collocated FROM Waypoints ORDER BY ID").fetchall() == [(1, "OLD", 0), (2, "TERM", 0), (3, "DES", 0)]
+
+
+def test_designated_waypoint_prefers_nearby_official_record_with_same_ident(tmp_path):
+    connection = sqlite3.connect(tmp_path / "designated.db3")
+    connection.executescript("""
+        CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
+        CREATE TABLE WaypointLookup (Ident TEXT, Country TEXT, ID INTEGER);
+        CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Latitude REAL, Longtitude REAL);
+        INSERT INTO Waypoints VALUES (1, 'P290', 0, 'P290', 40.06166667, 119.02833333, NULL);
+        INSERT INTO WaypointLookup VALUES ('P290', 'ZB', 1);
+    """)
+    source = SourceRef("fixture", 1)
+    model = NavModel(Path("."), waypoints=[Waypoint("new", "P290", "P290", 40.06222222, 119.02805556, source, "ZB")])
+
+    assert _insert_waypoints(connection, model)["designated_waypoints_inserted"] == 0
+
+
+def test_designated_reference_compatibility_retains_verified_border_point(tmp_path):
+    connection = sqlite3.connect(tmp_path / "border.db3")
+    connection.executescript("""
+        CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
+        CREATE TABLE WaypointLookup (Ident TEXT, Country TEXT, ID INTEGER);
+        CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Latitude REAL, Longtitude REAL);
+        INSERT INTO Waypoints VALUES (1, 'PAPA', 0, 'PAPA', 21.9775, 113.65611111, NULL);
+    """)
+    source = SourceRef("fixture", 1)
+    model = NavModel(Path("."), waypoints=[Waypoint("new", "PAPA", "PAPA", 21.97833333, 113.65666667, source, "CN")])
+
+    assert _insert_waypoints(connection, model)["designated_waypoints_inserted"] == 1

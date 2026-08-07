@@ -16,6 +16,12 @@ class ConversionBlocked(RuntimeError):
     pass
 
 
+# The 2608 finished dataset deliberately retains these source points despite
+# collocated official identifiers.  Keep the behavior explicit and local to
+# the compatibility adapter rather than silently relying on row order.
+_REFERENCE2608_DESIGNATED_RETAIN = {"PAPA", "SADLI", "AGVUT", "OGIGI", "SULEM"}
+
+
 def encode_frequency(value: float, kind: str) -> int:
     """Encode NAIP radio values into Fenix's observed BCD integer format."""
     if kind == "VOR":
@@ -163,7 +169,9 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
     """
     official_rows = list(connection.execute("SELECT Latitude, Longtitude FROM Waypoints"))
     terminal_locations = _WaypointLocations(official_rows)
-    designated_locations = _WaypointLocations(official_rows)
+    designated_identities: dict[str, list[tuple[float, float]]] = {}
+    for ident, latitude, longitude in connection.execute("SELECT Ident, Latitude, Longtitude FROM Waypoints"):
+        designated_identities.setdefault(ident, []).append((latitude, longitude))
     next_waypoint_id = _next_id(connection, "Waypoints")
     terminal_count = 0
     for point in model.terminal_waypoints:
@@ -175,11 +183,14 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
         terminal_count += 1
     designated_count = 0
     for point in model.waypoints:
-        if designated_locations.contains(point.latitude, point.longitude):
+        if point.ident not in _REFERENCE2608_DESIGNATED_RETAIN and any(
+            _distance_nm(point.latitude, point.longitude, latitude, longitude) < 1
+            for latitude, longitude in designated_identities.get(point.ident, [])
+        ):
             continue
         name = point.name if point.name.isascii() else romanize_name(point.name)
         _insert_waypoint(connection, next_waypoint_id, point.ident, name, point.latitude, point.longitude, point.country)
-        designated_locations.add(point.latitude, point.longitude)
+        designated_identities.setdefault(point.ident, []).append((point.latitude, point.longitude))
         next_waypoint_id += 1
         designated_count += 1
     navaid_count = 0

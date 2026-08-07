@@ -23,6 +23,10 @@ _FIR_COUNTRIES = {
     "\u6c88\u9633\u60c5\u62a5\u533a": "ZY",
 }
 
+# These border fixes have no FIR in the 2608 source table.  Their published
+# locations identify the adjacent Fenix country key deterministically.
+_EMPTY_FIR_COUNTRY_OVERRIDES = {"SARUL": "ZB", "MAGOG": "VH", "SULEM": "RC", "SADLI": "RK"}
+
 
 def parse_dms(value: str) -> float:
     """Parse fixed-width NAIP DMS coordinates without guessing degree width."""
@@ -103,11 +107,23 @@ def navaid_country(serviced_airport: str, fir: str) -> str:
         raise ValueError(f"unmapped navaid FIR: {fir!r}") from error
 
 
-def waypoint_country(fir: str) -> str:
+def waypoint_country(fir: str, latitude: float | None = None, longitude: float | None = None, ident: str = "") -> str:
     """Map the structured designated-point FIR code to a Fenix country key."""
     if "\u9999\u6e2f" in (fir or ""):
         return "VH"
-    return navaid_country("", fir)
+    if fir:
+        return navaid_country("", fir)
+    if ident in _EMPTY_FIR_COUNTRY_OVERRIDES:
+        return _EMPTY_FIR_COUNTRY_OVERRIDES[ident]
+    if latitude is None or longitude is None:
+        raise ValueError("empty waypoint FIR without coordinates")
+    if 25 <= latitude <= 30 and 120 <= longitude <= 124:
+        return "RC"
+    if 30 <= latitude <= 40 and 124 <= longitude <= 132:
+        return "RK"
+    if 15 <= latitude <= 55 and 70 <= longitude <= 135:
+        return "CN"
+    raise ValueError(f"unmapped empty waypoint FIR at {latitude}, {longitude}")
 
 
 def load_naip(root: Path) -> NavModel:
@@ -155,8 +171,10 @@ def load_naip(root: Path) -> NavModel:
                 ))
     for row_number, row in enumerate(_rows(root / "DESIGNATED_POINT.csv"), start=2):
         try:
+            latitude = parse_dms(row.get("GEO_LAT_ACCURACY") or "")
+            longitude = parse_dms(row.get("GEO_LONG_ACCURACY") or "")
             model.waypoints.append(Waypoint(row["SIGNIFICANT_POINT_ID"], row.get("CODE_ID") or "", row.get("TXT_NAME") or "",
-                parse_dms(row.get("GEO_LAT_ACCURACY") or ""), parse_dms(row.get("GEO_LONG_ACCURACY") or ""), SourceRef("DESIGNATED_POINT.csv", row_number), waypoint_country(row.get("CODE_FIR") or "")))
+                latitude, longitude, SourceRef("DESIGNATED_POINT.csv", row_number), waypoint_country(row.get("CODE_FIR") or "", latitude, longitude, row.get("CODE_ID") or "")))
         except ValueError:
             model.rejected_records.append(RejectedRecord(
                 kind="designated-point", key=row.get("CODE_ID") or row.get("SIGNIFICANT_POINT_ID") or "",
