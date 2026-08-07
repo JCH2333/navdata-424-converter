@@ -16,7 +16,7 @@
 
 加载中间模型时，每份数据库编码图还会按连续的程序名、类型、跑道和过渡固定点聚合为有序 `ProcedureSegment`。每段保留原始图页来源和每条 `ChartTerminalLeg`；跨页或跨标题的段不自动拼接，避免从版面顺序推断不存在的连线。
 
-对 SID/STAR，程序写入器目前只接受 `CA`、`CF`、`DF`、`IF` 和 `TF` 航段，且每个有固定点的航段必须在同机场坐标页和目标 `Waypoints` 中唯一匹配。满足条件时会同时写入 `Terminals`、`TerminalLegsEx` 和 `TerminalLegs`；扩展行必须先于主航段行写入，因为 Fenix schema 的主航段外键引用扩展行。未唯一匹配的固定点、`RF`、`HM` 等未建立字段规则的航段会进入转换报告，绝不以直线段替代。
+对 SID/STAR，程序写入器目前只接受 `CA`、`CF`、`DF`、`IF` 和 `TF` 航段，且每个有固定点的航段必须在同机场坐标页和目标 `Waypoints` 中唯一匹配。满足条件时会同时写入 `Terminals`、`TerminalLegsEx` 和 `TerminalLegs`；扩展行必须先于主航段行写入，因为 Fenix schema 的主航段外键引用扩展行。`HM` 保持航段不会伪装为主航段，而会单独报告，待建立 `Holdings` 表映射后再写入；未唯一匹配的固定点和 `RF` 等未建立字段规则的航段同样进入报告，绝不以直线段替代。
 
 使用 `inspect-procedure-plan-coverage` 可将这些计划映射到 Fenix 的业务键后与本地成品差分做只读核对。无后缀的 `R{跑道}` 只表示数据库页明确给出的基准进近；不得把它自动复制为 X/Y/Z 变体，只有标题本身给出后缀时才能保留该变体。
 

@@ -102,7 +102,7 @@ def test_inserts_fully_resolved_source_sid_with_paired_extension_legs(tmp_path):
 
     counts = _insert_terminal_procedures(connection, model)
 
-    assert counts == {"terminal_procedures_inserted": 1, "terminal_legs_inserted": 2, "terminal_procedure_rejections": []}
+    assert counts == {"terminal_procedures_inserted": 1, "terminal_legs_inserted": 2, "terminal_procedure_rejections": [], "terminal_holding_rejections": []}
     assert connection.execute("SELECT ID, AirportID, Proc, Name, Rwy, RwyID FROM Terminals").fetchall() == [(1, 10, "2", "BM09D", "04", 20)]
     assert connection.execute("SELECT ID, TerminalID, Type, Transition, TrackCode, WptID, Course, Alt, WptDescCode FROM TerminalLegs ORDER BY ID").fetchall() == [
         (1, 1, "5", "RW04", "CF", 30, 37.0, None, "E"),
@@ -117,6 +117,34 @@ def test_inserts_fully_resolved_source_sid_with_paired_extension_legs(tmp_path):
     rejected = _insert_terminal_procedures(connection, model)["terminal_procedure_rejections"]
 
     assert rejected == [{"airport": "ZYYK", "label": "CC-09D", "reason": "terminal fix ZYYK/W has no source coordinate evidence", "source": source.__dict__}]
+
+
+def test_defers_holding_leg_without_blocking_evidenced_terminal_legs(tmp_path):
+    connection = sqlite3.connect(tmp_path / "holding.db3")
+    connection.executescript("""
+        CREATE TABLE Airports (ID INTEGER, ICAO TEXT);
+        CREATE TABLE Runways (ID INTEGER, AirportID INTEGER, Ident TEXT);
+        CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Latitude REAL, Longtitude REAL);
+        CREATE TABLE Terminals (ID INTEGER, AirportID INTEGER, Proc TEXT, ICAO TEXT, FullName TEXT, Name TEXT, Rwy TEXT, RwyID INTEGER, IlsID INTEGER);
+        CREATE TABLE TerminalLegs (ID INTEGER, TerminalID INTEGER, Type TEXT, Transition TEXT, TrackCode TEXT, WptID INTEGER, WptLat REAL, WptLon REAL, TurnDir TEXT, NavID INTEGER, NavLat REAL, NavLon REAL, NavBear REAL, NavDist REAL, Course REAL, Distance REAL, Alt TEXT, Vnav REAL, CenterID INTEGER, CenterLat REAL, CenterLon REAL, WptDescCode TEXT);
+        CREATE TABLE TerminalLegsEx (ID INTEGER, IsFlyOver INTEGER, SpeedLimit REAL, SpeedLimitDescription TEXT);
+        INSERT INTO Airports VALUES (10, 'ZYYK');
+        INSERT INTO Runways VALUES (20, 10, '04');
+        INSERT INTO Waypoints VALUES (30, 'YK551', 40.624444, 122.418333);
+    """)
+    source = SourceRef("Terminal/ZYYK/ZYYK-4Z01.pdf", 1, 1, "hash")
+    model = NavModel(tmp_path, terminal_waypoints=[TerminalWaypoint("first", "ZYYK", "YK551", 40.624444, 122.418333, source)], procedure_segments=[
+        ProcedureSegment("ZYYK", "BM-09D", "离场", "04", "", (
+            ChartTerminalLeg("BM-09D", "04", "IF", "YK551", "IF YK551", "离场"),
+            ChartTerminalLeg("BM-09D", "04", "HM", "YK551", "HM YK551", "离场"),
+        ), source),
+    ])
+
+    result = _insert_terminal_procedures(connection, model)
+
+    assert result["terminal_procedures_inserted"] == 1
+    assert connection.execute("SELECT TrackCode FROM TerminalLegs").fetchall() == [("IF",)]
+    assert result["terminal_holding_rejections"] == [{"airport": "ZYYK", "label": "BM-09D", "runway": "04", "fix_ident": "YK551", "raw": "HM YK551", "source": source.__dict__}]
 
 
 def test_resolves_terminal_fix_only_when_source_and_target_are_both_unique(tmp_path):

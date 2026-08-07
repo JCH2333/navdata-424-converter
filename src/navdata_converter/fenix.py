@@ -374,6 +374,7 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
     inserted_terminals = 0
     inserted_legs = 0
     rejected: list[dict[str, object]] = []
+    deferred_holdings: list[dict[str, object]] = []
     waypoint_resolutions, waypoint_failures = _terminal_waypoint_resolutions(connection, model)
     for segment in model.procedure_segments:
         try:
@@ -392,9 +393,21 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
             rejected.append({"airport": segment.airport, "label": segment.label, "reason": "missing target airport or runway", "source": asdict(segment.source)})
             continue
         transition = f"RW{runway}"
+        legs = []
+        for leg in segment.legs:
+            if leg.leg_type == "HM":
+                deferred_holdings.append({
+                    "airport": segment.airport, "label": segment.label, "runway": runway,
+                    "fix_ident": leg.fix_ident, "raw": leg.raw, "source": asdict(segment.source),
+                })
+            else:
+                legs.append(leg)
+        if not legs:
+            rejected.append({"airport": segment.airport, "label": segment.label, "reason": "only unprojectable holding legs", "source": asdict(segment.source)})
+            continue
         try:
             projections = []
-            for leg in segment.legs:
+            for leg in legs:
                 key = (segment.airport, leg.fix_ident) if leg.fix_ident else None
                 if key and key in waypoint_failures:
                     raise ConversionBlocked(waypoint_failures[key])
@@ -429,7 +442,12 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
         existing.add(identity)
         next_terminal_id += 1
         inserted_terminals += 1
-    return {"terminal_procedures_inserted": inserted_terminals, "terminal_legs_inserted": inserted_legs, "terminal_procedure_rejections": rejected}
+    return {
+        "terminal_procedures_inserted": inserted_terminals,
+        "terminal_legs_inserted": inserted_legs,
+        "terminal_procedure_rejections": rejected,
+        "terminal_holding_rejections": deferred_holdings,
+    }
 
 
 def _copy_navdata(official: Path, output: Path) -> Path:
@@ -498,13 +516,15 @@ def convert(official_navdata: Path, model: NavModel, output: Path, reference: Pa
             connection.commit()
             connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         terminal_rejections = counts.pop("terminal_procedure_rejections")
-        incomplete = bool(model.rejected_procedures or model.rejected_records or terminal_rejections)
-        if terminal_rejections and not allow_incomplete:
-            raise ConversionBlocked(f"terminal procedure projection rejected {len(terminal_rejections)} segments")
+        holding_rejections = counts.pop("terminal_holding_rejections")
+        incomplete = bool(model.rejected_procedures or model.rejected_records or terminal_rejections or holding_rejections)
+        if (terminal_rejections or holding_rejections) and not allow_incomplete:
+            raise ConversionBlocked(f"terminal projection rejected {len(terminal_rejections)} procedures and {len(holding_rejections)} holding legs")
         report = {"status": "incomplete" if incomplete else "candidate", "test_build": True, "deployable": not incomplete,
                   "profile": profile["config"], "counts": counts, "rejected_procedures": [asdict(item) for item in model.rejected_procedures],
                   "rejected_records": [asdict(item) for item in model.rejected_records],
                   "terminal_procedure_rejections": terminal_rejections,
+                  "terminal_holding_rejections": holding_rejections,
                   "terminal_waypoint_evidence": len(model.terminal_waypoints),
                   "terminal_database_chart_evidence": len(model.procedure_charts),
                   "terminal_database_leg_evidence": sum(len(chart.terminal_legs) for chart in model.procedure_charts),
