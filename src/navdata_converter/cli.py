@@ -19,7 +19,7 @@ def _chart_payload(chart: object) -> dict[str, object]:
 
 
 def _convert(args: argparse.Namespace) -> int:
-    model = load_naip(Path(args.naip_root), Path(args.pdf_cache) if args.pdf_cache else None)
+    model = _load_model(args)
     try:
         report = convert(Path(args.official_navdata), model, Path(args.output), Path(args.reference) if args.reference else None, allow_incomplete=args.allow_incomplete)
     except ConversionBlocked as error:
@@ -28,6 +28,10 @@ def _convert(args: argparse.Namespace) -> int:
         return 2
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
+
+
+def _load_model(args: argparse.Namespace):
+    return load_naip(Path(args.naip_root), Path(args.pdf_cache) if args.pdf_cache else None)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -76,22 +80,25 @@ def main(argv: list[str] | None = None) -> int:
     terminal_coverage.add_argument("--naip-root", required=True)
     terminal_coverage.add_argument("--official-navdata", required=True)
     terminal_coverage.add_argument("--reference", required=True)
+    terminal_coverage.add_argument("--pdf-cache")
     terminal_coverage.set_defaults(handler=lambda a: print(json.dumps(
-        inspect_terminal_waypoint_coverage(load_naip(Path(a.naip_root)), Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2
+        inspect_terminal_waypoint_coverage(_load_model(a), Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2
     )) or 0)
     approach_coverage = commands.add_parser("inspect-approach-chart-coverage")
     approach_coverage.add_argument("--naip-root", required=True)
     approach_coverage.add_argument("--official-navdata", required=True)
     approach_coverage.add_argument("--reference", required=True)
+    approach_coverage.add_argument("--pdf-cache")
     approach_coverage.set_defaults(handler=lambda a: print(json.dumps(
-        inspect_approach_chart_coverage(load_naip(Path(a.naip_root)), Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2
+        inspect_approach_chart_coverage(_load_model(a), Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2
     )) or 0)
     database_fix_coverage = commands.add_parser("inspect-database-fix-coverage")
     database_fix_coverage.add_argument("--naip-root", required=True)
     database_fix_coverage.add_argument("--official-navdata", required=True)
     database_fix_coverage.add_argument("--reference", required=True)
+    database_fix_coverage.add_argument("--pdf-cache")
     database_fix_coverage.set_defaults(handler=lambda a: print(json.dumps(
-        inspect_database_fix_coverage(load_naip(Path(a.naip_root)), Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2
+        inspect_database_fix_coverage(_load_model(a), Path(a.official_navdata), Path(a.reference)), ensure_ascii=False, indent=2
     )) or 0)
     args = parser.parse_args(argv)
     return args.handler(args)

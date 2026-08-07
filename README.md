@@ -16,6 +16,8 @@ python -m navdata_converter.cli convert --official-navdata C:\ProgramData\Fenix\
 
 候选必须通过校验并且没有被拒绝的程序，才会允许部署。部署前会检查 `FlightSimulator2024.exe` 已退出，并备份数据库与周期元数据。
 
+三个 PDF 覆盖分析命令同样支持 `--pdf-cache <缓存目录>`，应复用转换时的同一缓存目录。
+
 ## 开发约束
 
 - 原始 NAIP、官方 Fenix 数据和生成结果均为本地输入/输出，不能提交。
