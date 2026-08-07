@@ -96,3 +96,10 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 - 不部署到 `C:\ProgramData\Fenix\Navdata`，除非用户明确要求并确认 `FlightSimulator2024.exe` 已退出；部署前必须带时间戳备份数据库和周期元数据。
 - 不提交数据库、PDF、缓存、日志、`output`、外部测试包或任何密钥。
 - 不创建正式 Release；实机验证通过前只能测试版。
+
+## 2026-08-07 重解析诊断
+
+- 使用当期 `424源数据\\2608\\2608` 的 CSV/PDF 重新运行 `load_naip`，并将模型保存为被忽略的 `output\\model-2608-latest.pickle`；模型统计为机场 275、跑道 640、台站 438、航路点 2158、ILS 430、终端航点 8790、程序段 4853，拒绝记录 1、拒绝程序 7969。
+- 基于该模型生成 `output\\candidate-2608-latest`。候选状态仍为 `incomplete`，插入机场 188、跑道 376、台站 140、ILS 142、终端航点 6232、终端程序 1414、终端航段 6601；ILS 拒绝 58 条。
+- 与只读 `fnx2608N` 参考库按机场 ICAO 逐字段比较：机场键集合一致；`Latitude`、`Longtitude`、`TransitionAltitude`、`TransitionLevel`、`Elevation`、`SpeedLimit` 均无差异。剩余 188 条 `Name` 差异和 44 条 `SpeedLimitAltitude` 差异。机场 PDF 图页仅出现中文机场标题（例如 `赤峰/玉龙`），当前没有 CSV/PDF 中可追溯的参考英文名称或限速高度字段，故本轮不回填、不硬编码。
+- 候选数据库 `integrity_check=ok`，schema 与参考相同；候选与参考 SHA-256 仍不同（未达到字节级一致），不得部署或发布。
