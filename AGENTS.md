@@ -164,3 +164,9 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 - 适用范围：Fenix 2608 终端程序固定点解析。`ZGHA/GUS-1W` 的固定点 `W` 不在终端坐标页或 `DESIGNATED_POINT.csv`，但 `NDB.csv` 第 71 行明确给出谷塘台 `W` 的坐标，候选库中存在唯一的同标识近距航点。
 - 解决方式：仅当本场终端坐标页和指定点均无该标识时，使用全局唯一的 VOR/NDB 来源坐标；多坐标台站仍按现有歧义规则拒绝。`test_terminal_procedure_resolution_falls_back_to_unique_navaid` 覆盖该优先级。
 - 验证：使用已重新解析的 PDF/CSV 模型生成候选后，`GUS-1W` 被投影，普通终端程序拒绝从 4 降至 3，程序为 2005、航段为 9790，`integrity_check=ok`。候选仍不等于参考，禁止部署或发布。
+
+## 2026-08-08 分钟坐标无末尾引号
+
+- 适用范围：2608 终端坐标页。`Terminal/ZHXY/ZHXY-4E.pdf` 明确打印 `XY608 N32°35.4'E114°20.1`；最后一个经度分钟字段未带引号，旧 `_DM_COORDINATE` 因强制末尾引号拒绝该行。
+- 解决方式：分钟格式的末尾分隔符改为可选，仍要求完整的 N/E、度和分钟字段；`test_pairs_coordinate_page_row_without_terminal_longitude_quote` 使用同一 PDF 的 word 坐标行覆盖。证据缓存版本随解析行为升级。
+- 验证：重新解析完整 PDF/CSV 后，`XY608` 被写入终端航点并投影 `P536-09D`、`P536-19D`；普通终端程序拒绝从 3 降至 1，程序为 2007、航段为 9796，`integrity_check=ok`。唯一剩余普通程序拒绝为 `ZYTN/NUBKI-19D` 的 `HF` 航段；候选仍不可部署或发布。

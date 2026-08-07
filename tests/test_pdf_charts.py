@@ -287,6 +287,17 @@ def test_pairs_coordinate_page_columns_only_when_counts_match():
     ]
 
 
+def test_pairs_coordinate_page_row_without_terminal_longitude_quote():
+    points = extract_positioned_coordinate_page_points([
+        (32.3, 199.2, 52.3, 205.2, "XY608", 11, 0, 0),
+        (57.8, 199.2, 124.1, 205.2, "N32°35.4'E114°20.1", 60, 0, 0),
+    ])
+
+    assert [(item.ident, round(item.latitude, 6), round(item.longitude, 6)) for item in points] == [
+        ("XY608", 32.59, 114.335),
+    ]
+
+
 def test_pairs_coordinate_rows_by_rendered_position_when_pdf_text_order_is_wrong():
     words = [
         (42.0, 288.2, 60.0, 300.0, "BH413", 0, 0, 0),
