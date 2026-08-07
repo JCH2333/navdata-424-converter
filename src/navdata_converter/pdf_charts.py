@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import re
 import csv
+from dataclasses import replace
 from pathlib import Path
 
 import pymupdf
@@ -91,6 +92,39 @@ def extract_coordinate_page_points(text: str) -> tuple[ChartFixCoordinate, ...]:
         ChartFixCoordinate(identifier, coordinate.latitude, coordinate.longitude, coordinate.raw)
         for identifier, coordinate in zip(identifiers, coordinates, strict=True)
     )
+
+
+def extract_positioned_coordinate_page_points(words: list[tuple[float, float, float, float, str, int, int, int]]) -> tuple[ChartFixCoordinate, ...]:
+    """Read identifier/coordinate pairs from their rendered PDF positions.
+
+    Some CAAC PDFs store individual coordinate text objects out of stream order.
+    Their visual rows remain reliable, so pair a coordinate with the nearest
+    identifier to its left on the same rendered line instead of trusting text
+    extraction order.
+    """
+    lines: dict[int, list[tuple[float, str]]] = {}
+    for x0, y0, _, _, text, *_ in words:
+        lines.setdefault(round(y0), []).append((x0, text))
+    result: list[ChartFixCoordinate] = []
+    for _, line in sorted(lines.items()):
+        tokens = sorted(line)
+        for position, (_, token) in enumerate(tokens):
+            match = _DMS_COORDINATE.search(token) or _DM_COORDINATE.search(token)
+            if not match:
+                continue
+            identifier = next(
+                (candidate for _, candidate in reversed(tokens[:position]) if _COORDINATE_PAGE_IDENT.fullmatch(candidate) and candidate not in _IGNORED),
+                None,
+            )
+            if identifier is None:
+                continue
+            latitude = int(match["lat_deg"]) + float(match["lat_min"]) / 60
+            longitude = int(match["lon_deg"]) + float(match["lon_min"]) / 60
+            if "lat_sec" in match.groupdict() and match["lat_sec"] is not None:
+                latitude += float(match["lat_sec"]) / 3600
+                longitude += float(match["lon_sec"]) / 3600
+            result.append(ChartFixCoordinate(identifier, latitude, longitude, match.group(0)))
+    return tuple(result)
 
 
 def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
@@ -230,5 +264,7 @@ def extract_coordinate_chart(pdf: Path, airport: str, chart_type: str, chart_nam
     with pymupdf.open(pdf) as document:
         for page_number, page in enumerate(document, start=1):
             text = page.get_text()
-            result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, text, file_hash))
+            chart = _chart_from_text(pdf, airport, chart_type, chart_name, page_number, text, file_hash)
+            positioned = extract_positioned_coordinate_page_points(page.get_text("words"))
+            result.append(replace(chart, fix_coordinates=positioned or chart.fix_coordinates))
     return result

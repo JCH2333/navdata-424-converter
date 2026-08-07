@@ -1,4 +1,4 @@
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_rows, extract_coordinate_page_points, extract_fix_coordinates, extract_terminal_leg_evidence
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_rows, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -37,6 +37,23 @@ def test_pairs_coordinate_page_columns_only_when_counts_match():
     assert [(item.ident, round(item.latitude, 6), round(item.longitude, 6)) for item in points] == [
         ("YK401", 40.594444, 121.803889),
         ("BM", 39.656667, 121.746667),
+    ]
+
+
+def test_pairs_coordinate_rows_by_rendered_position_when_pdf_text_order_is_wrong():
+    words = [
+        (42.0, 288.2, 60.0, 300.0, "BH413", 0, 0, 0),
+        (42.0, 304.0, 60.0, 316.0, "BH414", 0, 1, 0),
+        # The second coordinate object is emitted first by the PDF stream.
+        (76.0, 304.0, 160.0, 316.0, 'N21°11\'44"E109°36\'58"', 1, 0, 0),
+        (76.0, 288.2, 160.0, 300.0, 'N21°03\'09"E109°38\'13"', 1, 1, 0),
+    ]
+
+    points = extract_positioned_coordinate_page_points(words)
+
+    assert [(item.ident, round(item.latitude, 6), round(item.longitude, 6)) for item in points] == [
+        ("BH413", 21.0525, 109.636944),
+        ("BH414", 21.195556, 109.616111),
     ]
 
 
