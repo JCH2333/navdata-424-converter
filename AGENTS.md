@@ -113,3 +113,8 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 
 - `Charts.csv` 的“数据库编码”行通常带有标准仪表图类型；此前 `_reject_unparsed_charts` 仅按图类型筛选，导致已由 `extract_airport_database_charts` 解析为终端航段的页面又被错误登记为未解析。现按图名先排除数据库编码页，并以最小 CSV fixture 覆盖。
 - 重新解析后，终端 PDF 拒绝从 7969 条降至 6389 条，精确减少 1580 个数据库编码页面；`procedure_charts=7356`、`procedure_segments=4853`、投影终端程序 1414 和航段 6601 均保持不变。`output\\candidate-2608-database-pages` 的完整表级差分与机场名称候选一致，`integrity_check=ok`，SHA-256 仍为 `42297b3b2d2210a8d3c785f3e59651a875d2d4ba51f2a15257fbc9638ebfd1a0`，不得部署或发布。
+
+## 2026-08-08 跑道来源精度诊断
+
+- 对 `output\\candidate-2608-database-pages` 与只读参考按 `(机场 ICAO, 跑道标识)` 比较：候选仅多出 `ZBAL 14/32` 两条；374 条公共跑道的 `Latitude`、`Longtitude` 和物理 ID 不同，364 条 `TrueHeading`、48 条长度、10 条宽度、22 条道面和 68 条标高不同。
+- `RWY_DIRECTION.csv` 只提供整数 `VAL_TRUE_BRG`、标高和位移距离，未提供阈值坐标；`RWY.csv` 只提供长度、宽度和道面。终端机场图所见 ARP/跑道图也未提供可结构化的阈值坐标。当前阈值计算是基于来源 ARP、长度和方位的诊断近似，不能复原参考的小数方位或阈值坐标，不能以参考字段或 ICAO 特例回填。该缺口必须在取得 CSV/PDF 内的高精度跑道来源前保持显式未完成。
