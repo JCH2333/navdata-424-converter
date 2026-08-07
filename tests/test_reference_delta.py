@@ -56,6 +56,8 @@ def test_terminal_coordinate_coverage_requires_matching_ident_and_location(tmp_p
     assert report["official_matches"] == 1
     assert report["reference_matches"] == 2
     assert report["reference_new_matches"] == 1
+    assert report["reference_renamed_or_collocated"] == 0
+    assert report["reference_unrepresented"] == 1
     assert report["reference_missing_sample"] == [{
         "airport": "ZBAD", "ident": "NEW", "latitude": 31.0, "longitude": 40.0, "source": "Terminal/ZBAD/ZBAD-4Y01.pdf",
     }]

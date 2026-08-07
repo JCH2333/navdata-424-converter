@@ -81,6 +81,31 @@ def _waypoints_by_ident(connection: sqlite3.Connection) -> dict[str, list[tuple[
     return result
 
 
+def _grid_key(latitude: float, longitude: float) -> tuple[int, int]:
+    # 0.05 degrees is wider than the matching tolerance, so examining the
+    # neighbouring cells cannot omit a point within 0.02 NM.
+    return round(latitude / 0.05), round(longitude / 0.05)
+
+
+def _waypoint_grid(points: dict[str, list[tuple[int, float, float]]]) -> dict[tuple[int, int], list[tuple[int, str, float, float]]]:
+    result: dict[tuple[int, int], list[tuple[int, str, float, float]]] = {}
+    for identifier, entries in points.items():
+        for point_id, latitude, longitude in entries:
+            result.setdefault(_grid_key(latitude, longitude), []).append((point_id, identifier, latitude, longitude))
+    return result
+
+
+def _physical_hits(grid: dict[tuple[int, int], list[tuple[int, str, float, float]]], latitude: float, longitude: float, tolerance_nm: float) -> list[tuple[int, str, float, float]]:
+    cell_latitude, cell_longitude = _grid_key(latitude, longitude)
+    candidates = [
+        point
+        for latitude_offset in range(-1, 2)
+        for longitude_offset in range(-1, 2)
+        for point in grid.get((cell_latitude + latitude_offset, cell_longitude + longitude_offset), [])
+    ]
+    return [point for point in candidates if _distance_nm(latitude, longitude, point[2], point[3]) < tolerance_nm]
+
+
 def inspect_terminal_waypoint_coverage(model: NavModel, official: Path, reference: Path, tolerance_nm: float = 0.02) -> dict[str, object]:
     """Measure indexed terminal coordinate evidence against local Fenix databases.
 
@@ -95,6 +120,7 @@ def inspect_terminal_waypoint_coverage(model: NavModel, official: Path, referenc
     with sqlite3.connect(f"file:{official}?mode=ro", uri=True) as base, sqlite3.connect(f"file:{reference}?mode=ro", uri=True) as finished:
         base_points = _waypoints_by_ident(base)
         reference_points = _waypoints_by_ident(finished)
+        reference_grid = _waypoint_grid(reference_points)
         base_max_id = int(base.execute("SELECT COALESCE(MAX(ID), 0) FROM Waypoints").fetchone()[0])
     result = {
         "evidence_rows": len(model.terminal_waypoints),
@@ -105,6 +131,8 @@ def inspect_terminal_waypoint_coverage(model: NavModel, official: Path, referenc
         "reference_missing": 0,
         "reference_new_matches": 0,
         "reference_existing_matches": 0,
+        "reference_renamed_or_collocated": 0,
+        "reference_unrepresented": 0,
         "reference_missing_sample": [],
     }
     for (identifier, latitude, longitude), sources in points.items():
@@ -116,6 +144,8 @@ def inspect_terminal_waypoint_coverage(model: NavModel, official: Path, referenc
             result["reference_new_matches" if any(row[0] > base_max_id for row in reference_hits) else "reference_existing_matches"] += 1
         else:
             result["reference_missing"] += 1
+            physical_hits = _physical_hits(reference_grid, latitude, longitude, tolerance_nm)
+            result["reference_renamed_or_collocated" if physical_hits else "reference_unrepresented"] += 1
             samples: list[dict[str, object]] = result["reference_missing_sample"]  # type: ignore[assignment]
             if len(samples) < 20:
                 source = sources[0]
