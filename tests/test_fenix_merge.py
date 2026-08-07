@@ -81,9 +81,9 @@ def test_projects_complete_ad219_ils_using_observed_fenix_units():
 
     assert project_ad219_ils(ils).__dict__ == {
         "frequency": 0x01085000, "glide_slope_angle": 3.2,
-        "latitude": 42.1436666667, "longitude": 118.8319722222,
+        "latitude": 42.143667, "longitude": 118.831972,
         "category": "1", "ident": "ICF", "localizer_course": 212.0,
-        "crossing_height": "49", "elevation_feet": 2021,
+        "crossing_height": "50", "elevation_feet": 2021,
     }
 
 
@@ -105,7 +105,7 @@ def test_inserts_only_complete_source_backed_ils_rows(tmp_path):
     assert result["ilses_inserted"] == 1
     assert result["ils_rejections"] == [{"airport": "ZBCF", "runway": "21", "ident": "BAD", "reason": "ILS ZBCF/21/BAD missing DME elevation", "source": source.__dict__}]
     assert connection.execute("SELECT RunwayID, Freq, GsAngle, Latitude, Longtitude, Category, Ident, LocCourse, CrossingHeight, HasDme, Elevation FROM ILSes").fetchall() == [
-        (20, 0x01085000, 3.2, 42.1436666667, 118.8319722222, "1", "ICF", 212.0, "49", 1, 2021),
+        (20, 0x01085000, 3.2, 42.143667, 118.831972, "1", "ICF", 212.0, "50", 1, 2021),
     ]
 
 

@@ -228,12 +228,12 @@ def project_ad219_ils(ils: Ils) -> FenixIlsProjection:
     return FenixIlsProjection(
         frequency=encode_frequency(ils.frequency_mhz, "VOR"),
         glide_slope_angle=float(ils.glide_slope_degrees),
-        latitude=ils.localizer_latitude,
-        longitude=ils.localizer_longitude,
+        latitude=round(ils.localizer_latitude, 6),
+        longitude=round(ils.localizer_longitude, 6),
         category=categories[ils.category],
         ident=ils.ident,
         localizer_course=float(ils.localizer_course_magnetic),
-        crossing_height=str(round(float(ils.crossing_height_meters) * 3.28084)),
+        crossing_height=str(math.ceil(float(ils.crossing_height_meters) * 3.28084)),
         elevation_feet=round(float(ils.dme_elevation_meters) * 3.28084),
     )
 
