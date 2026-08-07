@@ -154,6 +154,33 @@ def inspect_terminal_waypoint_coverage(model: NavModel, official: Path, referenc
     return result
 
 
+def inspect_database_fix_coverage(model: NavModel, official: Path, reference: Path, tolerance_nm: float = 0.02) -> dict[str, int]:
+    """Measure coordinate-page points that database-coded procedures actually use."""
+    fix_keys = {
+        (chart.airport, leg.fix_ident)
+        for chart in model.procedure_charts
+        for leg in chart.terminal_legs
+        if leg.fix_ident
+    }
+    points = {
+        (point.ident, round(point.latitude, 9), round(point.longitude, 9))
+        for point in model.terminal_waypoints
+        if (point.airport, point.ident) in fix_keys
+    }
+    official, reference = _db(official), _db(reference)
+    with sqlite3.connect(f"file:{official}?mode=ro", uri=True) as base, sqlite3.connect(f"file:{reference}?mode=ro", uri=True) as finished:
+        base_ids = {row[0] for row in base.execute("SELECT ID FROM Waypoints")}
+        added_by_ident: dict[str, list[tuple[float, float]]] = {}
+        for identifier, point_id, latitude, longitude in finished.execute("SELECT Ident, ID, Latitude, Longtitude FROM Waypoints"):
+            if point_id not in base_ids:
+                added_by_ident.setdefault(identifier, []).append((latitude, longitude))
+    matches = sum(
+        any(_distance_nm(latitude, longitude, candidate_latitude, candidate_longitude) < tolerance_nm for candidate_latitude, candidate_longitude in added_by_ident.get(identifier, []))
+        for identifier, latitude, longitude in points
+    )
+    return {"database_fix_keys": len(fix_keys), "coordinate_points": len(points), "reference_added_matches": matches}
+
+
 def _runway_key(value: object) -> str:
     """Normalize printed Fenix and chart runway tokens for a read-only join."""
     runway = str(value or "").upper().strip().replace(" ", "")
