@@ -371,6 +371,29 @@ def extract_airport_approach_charts(airport_directory: Path) -> list[ProcedureCh
     return charts
 
 
+def _is_standard_procedure_index_row(row: dict[str, str]) -> bool:
+    chart_type = (row.get("ChartTypeEx_CH") or "").strip()
+    return "\u6807\u51c6\u4eea\u8868\u79bb\u573a\u56fe" in chart_type or "\u6807\u51c6\u4eea\u8868\u8fdb\u573a\u56fe" in chart_type
+
+
+def extract_airport_standard_procedure_charts(airport_directory: Path) -> list[ProcedureChart]:
+    """Extract index-declared SID/STAR pages as waypoint-label evidence."""
+    index = airport_directory / "Charts.csv"
+    if not index.is_file():
+        raise FileNotFoundError(f"missing chart index: {index}")
+    airport = airport_directory.resolve().name.upper()
+    charts: list[ProcedureChart] = []
+    for row in _chart_rows(index):
+        page = (row.get("PAGE_NUMBER") or "").strip()
+        chart_name = (row.get("ChartName") or "").strip()
+        if not page or not _is_standard_procedure_index_row(row):
+            continue
+        pdf = airport_directory / f"{airport}-{page}.pdf"
+        if pdf.is_file():
+            charts.extend(extract_approach_chart(pdf, airport, "standard-terminal-procedure", chart_name))
+    return charts
+
+
 def _chart_rows(index: Path) -> list[dict[str, str]]:
     raw = index.read_bytes()
     for encoding in ("utf-8-sig", "gbk"):

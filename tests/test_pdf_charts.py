@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -163,3 +163,22 @@ def test_approach_chart_selection_uses_chart_type_and_preserves_index_name(monke
 
     assert extract_airport_approach_charts(airport) == []
     assert calls == [("ZYYK-5A.pdf", "ZYYK", "instrument-approach-index", "ILS Z RWY04")]
+
+
+def test_standard_procedure_chart_selection_uses_sid_and_star_index_types(monkeypatch, tmp_path):
+    airport = tmp_path / "ZYYK"
+    airport.mkdir()
+    (airport / "Charts.csv").write_text(
+        "ChartName,ChartTypeEx_CH,PAGE_NUMBER\n"
+        "SID RWY04,\u6807\u51c6\u4eea\u8868\u79bb\u573a\u56fe,3A\n"
+        "STAR RWY22,\u6807\u51c6\u4eea\u8868\u8fdb\u573a\u56fe,4A\n"
+        "ILS RWY04,\u4eea\u8868\u8fdb\u8fd1\u56fe,5A\n",
+        encoding="utf-8",
+    )
+    (airport / "ZYYK-3A.pdf").write_bytes(b"placeholder")
+    (airport / "ZYYK-4A.pdf").write_bytes(b"placeholder")
+    calls = []
+    monkeypatch.setattr("navdata_converter.pdf_charts.extract_approach_chart", lambda pdf, airport_code, chart_type, chart_name: calls.append((pdf.name, chart_type, chart_name)) or [])
+
+    assert extract_airport_standard_procedure_charts(airport) == []
+    assert calls == [("ZYYK-3A.pdf", "standard-terminal-procedure", "SID RWY04"), ("ZYYK-4A.pdf", "standard-terminal-procedure", "STAR RWY22")]

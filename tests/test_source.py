@@ -107,3 +107,17 @@ def test_terminal_approach_charts_are_retained_as_index_evidence(monkeypatch, tm
     _load_terminal_approach_charts(model)
 
     assert model.procedure_charts == [chart]
+
+
+def test_terminal_standard_procedure_charts_are_retained_as_waypoint_evidence(monkeypatch, tmp_path):
+    from navdata_converter.source import _load_terminal_standard_procedure_charts
+
+    airport_directory = tmp_path / "Terminal" / "ZYYK"
+    airport_directory.mkdir(parents=True)
+    chart = ProcedureChart("ZYYK", "ZYYK-3A.pdf", 1, "standard-terminal-procedure", "SID", "text-hash", (), (), ("YK551",), (), (), SourceRef("ignored"))
+    monkeypatch.setattr("navdata_converter.source.extract_airport_standard_procedure_charts", lambda _: [chart])
+    model = NavModel(tmp_path)
+
+    _load_terminal_standard_procedure_charts(model)
+
+    assert model.procedure_charts == [chart]
