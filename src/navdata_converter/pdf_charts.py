@@ -12,6 +12,7 @@ import re
 import csv
 from pathlib import Path
 
+import pymupdf
 from pypdf import PdfReader
 
 from .model import ChartFixCoordinate, ChartTerminalLeg, ProcedureChart, SourceRef
@@ -147,26 +148,29 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str
     for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text(extraction_mode="layout") or ""
         coordinate_text = page.extract_text() or ""
-        labels = tuple(sorted(set(_PROCEDURE.findall(text))))
-        runways = tuple(sorted(set(_RUNWAY.findall(f"{chart_name}\n{text}"))))
-        waypoints = tuple(sorted({token for token in _WAYPOINT.findall(text) if token not in _IGNORED and not token.isdigit()}))
-        result.append(ProcedureChart(
-            airport=airport,
-            filename=pdf.name,
-            page=page_number,
-            chart_type=chart_type,
-            chart_name=chart_name,
-            text_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
-            procedure_labels=labels,
-            runways=runways,
-            waypoints=waypoints,
-            terminal_legs=extract_terminal_leg_evidence(text),
-            fix_coordinates=extract_fix_coordinates(text) + (
-                extract_coordinate_page_points(text) or extract_coordinate_page_points(coordinate_text)
-            ),
-            source=SourceRef(str(pdf), page_number, page_number, file_hash),
-        ))
+        result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, text, file_hash, coordinate_text))
     return result
+
+
+def _chart_from_text(pdf: Path, airport: str, chart_type: str, chart_name: str, page_number: int, text: str, file_hash: str, coordinate_text: str | None = None) -> ProcedureChart:
+    labels = tuple(sorted(set(_PROCEDURE.findall(text))))
+    runways = tuple(sorted(set(_RUNWAY.findall(f"{chart_name}\n{text}"))))
+    waypoints = tuple(sorted({token for token in _WAYPOINT.findall(text) if token not in _IGNORED and not token.isdigit()}))
+    coordinates = extract_coordinate_page_points(text) or extract_coordinate_page_points(coordinate_text or "")
+    return ProcedureChart(
+        airport=airport,
+        filename=pdf.name,
+        page=page_number,
+        chart_type=chart_type,
+        chart_name=chart_name,
+        text_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        procedure_labels=labels,
+        runways=runways,
+        waypoints=waypoints,
+        terminal_legs=extract_terminal_leg_evidence(text),
+        fix_coordinates=extract_fix_coordinates(text) + coordinates,
+        source=SourceRef(str(pdf), page_number, page_number, file_hash),
+    )
 
 
 def extract_airport_charts(airport_directory: Path) -> list[ProcedureChart]:
@@ -215,5 +219,16 @@ def extract_airport_coordinate_pages(airport_directory: Path) -> list[ProcedureC
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            charts.extend(extract_chart(pdf, airport, "terminal-coordinate-page", chart_name))
+            charts.extend(extract_coordinate_chart(pdf, airport, "terminal-coordinate-page", chart_name))
     return charts
+
+
+def extract_coordinate_chart(pdf: Path, airport: str, chart_type: str, chart_name: str) -> list[ProcedureChart]:
+    """Use PyMuPDF's fast plain-text order for terminal coordinate pages."""
+    file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    result: list[ProcedureChart] = []
+    with pymupdf.open(pdf) as document:
+        for page_number, page in enumerate(document, start=1):
+            text = page.get_text()
+            result.append(_chart_from_text(pdf, airport, chart_type, chart_name, page_number, text, file_hash))
+    return result

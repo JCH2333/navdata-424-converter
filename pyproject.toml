@@ -7,7 +7,7 @@ name = "navdata-424-converter"
 version = "0.1.0"
 description = "424/NAIP 到 Fenix 导航数据测试版转换器"
 requires-python = ">=3.11"
-dependencies = ["pypdf>=5.0", "pypinyin>=0.55"]
+dependencies = ["pypdf>=5.0", "pypinyin>=0.55", "PyMuPDF>=1.28"]
 
 [project.scripts]
 navdata-424 = "navdata_converter.cli:main"
