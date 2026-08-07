@@ -21,6 +21,7 @@ from .model import ChartFixCoordinate, ChartTerminalLeg, ProcedureChart, SourceR
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
 _RUNWAY = re.compile(r"\bRWY\s?(\d{2}[LRC]?)\b")
+_SHARED_RUNWAYS = re.compile(r"\bRWY\s?\d{2}[LRC]?(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)+\b")
 _WAYPOINT = re.compile(r"\b([A-Z][A-Z0-9]{1,5})\b")
 _IGNORED = {"CAAC", "ALL", "RIGHTS", "RESER", "MSA", "RNP", "ILS", "DME", "RWY", "ATC", "N", "E", "S", "W"}
 _CHART_COORDINATE = re.compile(
@@ -59,6 +60,14 @@ def extract_fix_coordinates(text: str) -> tuple[ChartFixCoordinate, ...]:
             raw=match.group(0),
         ))
     return tuple(coordinates)
+
+
+def _extract_runways(text: str) -> tuple[str, ...]:
+    """Read individual and slash-shared runway labels from chart text."""
+    runways = set(_RUNWAY.findall(text))
+    for match in _SHARED_RUNWAYS.finditer(text):
+        runways.update(re.findall(r"\d{2}[LRC]?", match.group(0)))
+    return tuple(sorted(runways))
 
 
 def extract_coordinate_page_points(text: str) -> tuple[ChartFixCoordinate, ...]:
@@ -194,7 +203,7 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str
 
 def _chart_from_text(pdf: Path, airport: str, chart_type: str, chart_name: str, page_number: int, text: str, file_hash: str, coordinate_text: str | None = None) -> ProcedureChart:
     labels = tuple(sorted(set(_PROCEDURE.findall(text))))
-    runways = tuple(sorted(set(_RUNWAY.findall(f"{chart_name}\n{text}"))))
+    runways = _extract_runways(f"{chart_name}\n{text}")
     waypoints = tuple(sorted({token for token in _WAYPOINT.findall(text) if token not in _IGNORED and not token.isdigit()}))
     coordinates = extract_coordinate_page_points(text) or extract_coordinate_page_points(coordinate_text or "")
     return ProcedureChart(

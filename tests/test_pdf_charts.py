@@ -1,4 +1,6 @@
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_rows, extract_airport_approach_charts, extract_airport_database_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
+from pathlib import Path
+
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_from_text, _chart_rows, extract_airport_approach_charts, extract_airport_database_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -6,6 +8,12 @@ def test_extracts_observable_procedure_and_fix_labels():
     assert _PROCEDURE.findall(text) == ["KAKAT-01D", "TGO-01D"]
     assert {item for item in _WAYPOINT.findall(text) if item not in {"RNP"}} >= {"KAKAT", "CHF"}
     assert _RUNWAY.findall("RWY03 RWY 21L") == ["03", "21L"]
+
+
+def test_expands_slash_separated_runways_in_approach_chart_title():
+    chart = _chart_from_text(Path("ZGUH-6A.pdf"), "ZGUH", "instrument-approach-index", "VOR/DME RWY16/34", 1, "", "hash")
+
+    assert chart.runways == ("16", "34")
 
 
 def test_extracts_explicit_chart_coordinates_without_inventing_a_leg():
