@@ -18,10 +18,10 @@ from typing import Callable
 import pymupdf
 from pypdf import PdfReader
 
-from .model import ChartFixCoordinate, ChartTerminalLeg, ProcedureChart, SourceRef
+from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 1
+_EVIDENCE_CACHE_VERSION = 2
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -30,7 +30,8 @@ _SHARED_RUNWAYS = re.compile(r"\bRWY\s?\d{2}[LRC]?(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC
 _APPROACH_VARIANT = re.compile(r"\b(?P<variant>[WXYZ])\s+RWY\s?\d{2}[LRC]?\b", re.IGNORECASE)
 _RNP_AR_LONG_NAME_AIRPORTS = {"ZYTL"}
 _WAYPOINT = re.compile(r"\b([A-Z][A-Z0-9]{1,5})\b")
-_IGNORED = {"CAAC", "ALL", "RIGHTS", "RESER", "MSA", "RNP", "ILS", "DME", "RWY", "ATC", "N", "E", "S", "W"}
+_IGNORED = {"CAAC", "ALL", "RIGHTS", "RESER", "MSA", "RNP", "ILS", "DME", "RWY", "ATC", "GP", "INOP", "N", "E", "S", "W"}
+_ROUTE_ROLE = {"IAF", "IF", "FAF", "MAP", "MAPT", "MAHF"}
 _CHART_COORDINATE = re.compile(
     r"\bN\s*(?P<lat_deg>\d{2})\s*(?:[°º]|D)?\s*(?P<lat_min>\d{2}(?:\.\d+)?)\s*(?:['′])?"
     r"\s*[,/ ]*E\s*(?P<lon_deg>\d{3})\s*(?:[°º]|D)?\s*(?P<lon_min>\d{2}(?:\.\d+)?)\s*(?:['′])?\b",
@@ -184,6 +185,33 @@ def extract_positioned_coordinate_page_points(words: list[tuple[float, float, fl
     return tuple(point for _, _, point in sorted(result))
 
 
+def extract_positioned_route_fixes(words: list[tuple[float, float, float, float, str, int, int, int]]) -> tuple[ChartRouteFix, ...]:
+    """Read route fixes only where the PDF explicitly labels their procedure role.
+
+    CAAC plates put labels such as ``IAF`` and ``YK603`` in separate text
+    objects but the same PDF text block.  Requiring that block plus overlapping
+    horizontal positions avoids promoting arbitrary map labels or chart notes
+    into route evidence.  This is source evidence, not an inferred leg order.
+    """
+    result: list[ChartRouteFix] = []
+    for role_x0, role_y0, role_x1, role_y1, raw_role, block, *_ in words:
+        role = raw_role.upper()
+        if role not in _ROUTE_ROLE:
+            continue
+        candidates = []
+        for fix_x0, fix_y0, fix_x1, fix_y1, raw_fix, fix_block, *_ in words:
+            fix = raw_fix.upper()
+            if fix_block != block or not _COORDINATE_PAGE_IDENT.fullmatch(fix) or fix in _IGNORED or fix in _ROUTE_ROLE:
+                continue
+            vertical_gap = min(abs(fix_y0 - role_y1), abs(role_y0 - fix_y1))
+            horizontal_overlap = min(role_x1, fix_x1) - max(role_x0, fix_x0)
+            if vertical_gap <= 12 and horizontal_overlap >= -1:
+                candidates.append((vertical_gap, -horizontal_overlap, fix))
+        if candidates:
+            result.append(ChartRouteFix(min(candidates)[2], role))
+    return tuple(dict.fromkeys(result))
+
+
 def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_ident: str | None) -> tuple[float | None, float | None, str | None, int | None]:
     """Read observable numeric fields from one database-coding table row."""
     values: list[str] = []
@@ -288,6 +316,7 @@ def _chart_to_payload(chart: ProcedureChart) -> dict[str, object]:
         "terminal_legs": [leg.__dict__ for leg in chart.terminal_legs],
         "fix_coordinates": [point.__dict__ for point in chart.fix_coordinates],
         "source": chart.source.__dict__,
+        "route_fixes": [fix.__dict__ for fix in chart.route_fixes],
     }
 
 
@@ -300,6 +329,7 @@ def _chart_from_payload(payload: dict[str, object]) -> ProcedureChart:
         terminal_legs=tuple(ChartTerminalLeg(**item) for item in payload["terminal_legs"]),
         fix_coordinates=tuple(ChartFixCoordinate(**item) for item in payload["fix_coordinates"]),
         source=SourceRef(**payload["source"]),
+        route_fixes=tuple(ChartRouteFix(**item) for item in payload.get("route_fixes", [])),
     )
 
 
@@ -510,5 +540,11 @@ def extract_database_chart(pdf: Path, airport: str, chart_type: str, chart_name:
 
 
 def extract_approach_chart(pdf: Path, airport: str, chart_type: str, chart_name: str) -> list[ProcedureChart]:
-    """Extract text-layer evidence from an index-declared approach chart."""
-    return extract_database_chart(pdf, airport, chart_type, chart_name)
+    """Extract text-layer and role-labelled fix evidence from a procedure plate."""
+    file_hash = hashlib.sha256(pdf.read_bytes()).hexdigest()
+    result: list[ProcedureChart] = []
+    with pymupdf.open(pdf) as document:
+        for page_number, page in enumerate(document, start=1):
+            chart = _chart_from_text(pdf, airport, chart_type, chart_name, page_number, page.get_text(), file_hash)
+            result.append(replace(chart, route_fixes=extract_positioned_route_fixes(page.get_text("words"))))
+    return result

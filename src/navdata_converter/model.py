@@ -127,6 +127,7 @@ class ProcedureChart:
     terminal_legs: tuple["ChartTerminalLeg", ...]
     fix_coordinates: tuple["ChartFixCoordinate", ...]
     source: SourceRef
+    route_fixes: tuple["ChartRouteFix", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -151,6 +152,14 @@ class ChartTerminalLeg:
     altitude_meters: float | None = None
     turn_direction: str | None = None
     speed_limit_knots: int | None = None
+
+
+@dataclass(frozen=True)
+class ChartRouteFix:
+    """A fix explicitly paired with a printed approach-route role."""
+
+    ident: str
+    role: str
 
 
 @dataclass

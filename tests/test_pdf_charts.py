@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, ProcedureChart, SourceRef
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
+from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -123,6 +123,18 @@ def test_pairs_three_column_coordinate_table_despite_baseline_offsets():
         ("DER16", 27.777056, 99.684167),
         ("DQ504", 27.662861, 99.730833),
     ]
+
+
+def test_extracts_role_labelled_route_fixes_without_promoting_unrelated_text():
+    words = [
+        (100.0, 10.0, 114.0, 18.0, "IAF", 1, 0, 0),
+        (100.0, 19.0, 126.0, 27.0, "YK603", 1, 1, 0),
+        (200.0, 10.0, 210.0, 18.0, "FAF", 2, 0, 0),
+        (212.0, 19.0, 235.0, 27.0, "INOP", 2, 1, 0),
+        (100.0, 80.0, 130.0, 88.0, "YK999", 3, 0, 0),
+    ]
+
+    assert extract_positioned_route_fixes(words) == (ChartRouteFix("YK603", "IAF"),)
 
 
 def test_chart_rows_decode_utf8_index(tmp_path):

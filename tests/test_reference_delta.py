@@ -1,8 +1,8 @@
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.model import ChartTerminalLeg, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
-from navdata_converter.reference_delta import inspect_approach_chart_coverage, inspect_database_fix_coverage, inspect_reference_delta, inspect_terminal_waypoint_coverage
+from navdata_converter.model import ChartRouteFix, ChartTerminalLeg, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
+from navdata_converter.reference_delta import inspect_approach_chart_coverage, inspect_database_fix_coverage, inspect_reference_delta, inspect_role_fix_coverage, inspect_terminal_waypoint_coverage
 
 
 def _database(path, rows):
@@ -115,3 +115,17 @@ def test_database_fix_coverage_requires_database_leg_and_coordinate_page_identit
     model = NavModel(Path("."), terminal_waypoints=[TerminalWaypoint("source", "ZYYK", "FIX", 40.624444, 122.418333, source)], procedure_charts=[chart])
 
     assert inspect_database_fix_coverage(model, official, reference) == {"database_fix_keys": 1, "coordinate_points": 1, "reference_added_matches": 1}
+
+
+def test_role_fix_coverage_requires_explicit_chart_role_and_coordinate_identity(tmp_path):
+    official = tmp_path / "official.db3"
+    reference = tmp_path / "reference.db3"
+    for database, rows in ((official, [(1, "BASE", 1.0, 1.0)]), (reference, [(1, "BASE", 1.0, 1.0), (2, "FIX", 40.624444, 122.418333)])):
+        with sqlite3.connect(database) as connection:
+            connection.execute("CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Latitude REAL, Longtitude REAL)")
+            connection.executemany("INSERT INTO Waypoints VALUES (?, ?, ?, ?)", rows)
+    source = SourceRef("Terminal/ZYYK/ZYYK-5A.pdf", page=1, sha256="hash")
+    chart = ProcedureChart("ZYYK", "ZYYK-5A.pdf", 1, "instrument-approach-index", "RNP RWY22", "text", (), (), (), (), (), source, (ChartRouteFix("FIX", "IAF"),))
+    model = NavModel(Path("."), terminal_waypoints=[TerminalWaypoint("source", "ZYYK", "FIX", 40.624444, 122.418333, source)], procedure_charts=[chart])
+
+    assert inspect_role_fix_coverage(model, official, reference) == {"role_fix_keys": 1, "coordinate_points": 1, "reference_added_matches": 1}
