@@ -133,3 +133,8 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 
 - 终端航点阶段此前按纯位置排除已存在航点，导致数据库编码页引用的 `ZHQQ/QQ508`、`ZUBD/P79`、`ZUXC/XC900` 等来源固定点被近距但不同标识的航点、台站或跑道标签抑制。终端坐标页已由程序引用，故去重条件收紧为“同标识且近距”；不同标识的同址点均保留，指定点和台站阶段仍独立。
 - 最小 fixture 断言终端点 `SKIP` 即使与既有 `OLD` 同址也会写入。完整候选 `output\\candidate-2608-terminal-identities`：终端航点由 6232 增至 6463、终端程序由 1857 增至 1922、航段由 8496 增至 9021，程序拒绝由 140 降至 75，且“来源坐标存在但无目标航点”的拒绝归零；保持拒绝仍为 292。`integrity_check=ok`；Waypoints 为 328831/330043，Terminals 为 99026/101618，TerminalLegs 与 TerminalLegsEx 均为 823867/845147，候选 SHA-256 `84fcb5610bb8fe81e3efe3d4e74b180fdb35bc273a3f0e87728dc1eeb8b01d31`，仍不得部署或发布。
+
+## 2026-08-08 终端指定点后备来源
+
+- 程序引用点优先使用同机场终端坐标页；只有该页没有对应标识时，才可使用 `DESIGNATED_POINT.csv` 中全局唯一的同标识坐标作为后备来源。多坐标指定点、已有终端坐标页歧义及没有 CSV/PDF 坐标的记录继续拒绝。该规则使 `ZYBA/P105`、`EKADO` 等有明确结构化来源的固定点参与投影，不使用参考行。
+- 最小 SQLite fixture 覆盖唯一指定点到目标航点的解析。完整候选 `output\\candidate-2608-designated-terminal-fallback-2`：终端程序由 1922 增至 1926、航段由 9021 增至 9040，程序拒绝由 75 降至 71（其中无来源坐标 3 条、目标歧义/缺失 58 条），保持拒绝仍为 292。`integrity_check=ok`；Terminals 为 99030/101618，TerminalLegs 与 TerminalLegsEx 均为 823886/845147，候选 SHA-256 `e2f9ec58f112d714da748677342fdf580cc0a94bb3bba5e8a61fe13271a28a2e`，仍不得部署或发布。

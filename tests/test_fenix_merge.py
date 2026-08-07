@@ -318,6 +318,25 @@ def test_terminal_procedure_resolution_prefers_terminal_source_phase_at_same_coo
     assert resolutions == {("ZSRZ", "P09"): (1, 35.27166666666667, 119.57)}
 
 
+def test_terminal_procedure_resolution_falls_back_to_unique_designated_point(tmp_path):
+    connection = sqlite3.connect(tmp_path / "designated-terminal-fallback.db3")
+    connection.execute("CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Latitude REAL, Longtitude REAL)")
+    connection.execute("INSERT INTO Waypoints VALUES (1, 'P105', 44.81, 123.075)")
+    source = SourceRef("DESIGNATED_POINT.csv", 2)
+    model = NavModel(
+        Path("."),
+        waypoints=[Waypoint("point", "P105", "P105", 44.81, 123.075, source, "ZY")],
+        procedure_segments=[ProcedureSegment(
+            "ZYBA", "P105-01D", "离场", "01", "", (ChartTerminalLeg("P105-01D", "01", "TF", "P105", "TF P105", "离场"),), source,
+        )],
+    )
+
+    resolutions, failures = _terminal_waypoint_resolutions(connection, model)
+
+    assert failures == {}
+    assert resolutions == {("ZYBA", "P105"): (1, 44.81, 123.075)}
+
+
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():
     latitude, longitude = runway_threshold(40.5425, 122.3586111111111, 29, 8202)
 

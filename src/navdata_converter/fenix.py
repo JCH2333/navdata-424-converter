@@ -189,6 +189,17 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
     source_points: dict[tuple[str, str], set[tuple[float, float]]] = {}
     for point in model.terminal_waypoints:
         source_points.setdefault((point.airport, point.ident), set()).add((round(point.latitude, 9), round(point.longitude, 9)))
+    designated_points: dict[str, set[tuple[float, float]]] = {}
+    for point in model.waypoints:
+        designated_points.setdefault(point.ident, set()).add((round(point.latitude, 9), round(point.longitude, 9)))
+    required_keys = {
+        (segment.airport, ident)
+        for segment in model.procedure_segments
+        for leg in segment.legs
+        for ident in (leg.fix_ident, leg.center_ident)
+        if ident
+    }
+    required_keys.update(source_points)
     targets: dict[str, list[tuple[int, float, float]]] = {}
     for point_id, ident, latitude, longitude in connection.execute("SELECT ID, Ident, Latitude, Longtitude FROM Waypoints"):
         targets.setdefault(str(ident), []).append((int(point_id), float(latitude), float(longitude)))
@@ -203,10 +214,17 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
     ).fetchone() else {}
     resolutions: dict[tuple[str, str], tuple[int, float, float]] = {}
     failures: dict[tuple[str, str], str] = {}
-    for key, locations in source_points.items():
+    for key in required_keys:
         airport, ident = key
+        locations = source_points.get(key)
+        if locations is None:
+            locations = designated_points.get(ident)
+        if locations is None:
+            failures[key] = f"terminal fix {airport}/{ident} has no source coordinate evidence"
+            continue
         if len(locations) != 1:
-            failures[key] = f"terminal fix {airport}/{ident} has {len(locations)} source locations"
+            count = len(locations)
+            failures[key] = f"terminal fix {airport}/{ident} has {count} source locations"
             continue
         latitude, longitude = next(iter(locations))
         source_id = source_terminal_ids.get((airport, ident, latitude, longitude))
