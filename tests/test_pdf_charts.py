@@ -143,6 +143,14 @@ def test_extracts_rf_center_endpoint_and_turn_from_database_row():
     ]
 
 
+def test_splits_multiple_rf_rows_compressed_into_one_pdf_text_line():
+    evidence = extract_terminal_leg_evidence("RWY07 离场 ELNEX-07D\nRF[RTX63, 4.1] TX610 R RF[RTX63, 4.1] TX614 R")
+
+    assert [(item.center_ident, item.fix_ident, item.turn_direction) for item in evidence] == [
+        ("RTX63", "TX610", "R"), ("RTX63", "TX614", "R"),
+    ]
+
+
 def test_pairs_coordinate_page_columns_only_when_counts_match():
     text = "YK401\nBM\nN40°35'40\"E121°48'14\"\nN39°39.4'E121°44.8'"
 

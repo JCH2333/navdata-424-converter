@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 9
+_EVIDENCE_CACHE_VERSION = 10
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -48,7 +48,7 @@ _DATABASE_APPROACH_PROCEDURE = re.compile(
     r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5}))?\b"
 )
 _DATABASE_LEG = re.compile(r"\b(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
-_DATABASE_RF_LEG = re.compile(r"\bRF\s*\[\s*(?P<center>[A-Z][A-Z0-9]{0,5})\s*,\s*\d+\s*\]\s*(?P<fix>[A-Z][A-Z0-9]{0,5})?")
+_DATABASE_RF_LEG = re.compile(r"\bRF\s*\[\s*(?P<center>[A-Z][A-Z0-9]{0,5})\s*,\s*\d+(?:\.\d+)?\s*\]\s*(?P<fix>[A-Z][A-Z0-9]{0,5})?")
 _DATABASE_SPEED = re.compile(r"^MAX(?P<speed>\d{2,3})$", re.IGNORECASE)
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _DMS_COORDINATE = re.compile(
@@ -368,6 +368,21 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 active_transition = ""
                 active_rows = pending_rows
             pending_rows = []
+            continue
+        rf_legs = list(_DATABASE_RF_LEG.finditer(line))
+        if len(rf_legs) > 1:
+            for index, rf_leg in enumerate(rf_legs):
+                end = rf_legs[index + 1].start() if index + 1 < len(rf_legs) else len(line)
+                fragment = line[rf_leg.start():end]
+                tokens = fragment.replace(",", " ").split()
+                turn = next((token for token in tokens if token in {"L", "R"}), None)
+                speed_match = re.search(r"\bMAX(\d{2,3})\b", fragment, re.IGNORECASE)
+                row = ("RF", rf_leg["fix"], fragment, None, None, turn,
+                       int(speed_match.group(1)) if speed_match else None, rf_leg["center"])
+                if active_label:
+                    active_rows.append(row)
+                else:
+                    pending_rows.append(row)
             continue
         rf_leg = _DATABASE_RF_LEG.search(line)
         leg = rf_leg or _DATABASE_LEG.search(line)
