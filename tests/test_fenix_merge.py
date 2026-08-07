@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model
+from navdata_converter.fenix import _insert_model, encode_frequency
 from navdata_converter.model import Airport, NavModel, Runway, SourceRef
 
 
@@ -24,3 +24,8 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
     assert db.execute("SELECT ID FROM Airports WHERE ICAO='ZBCF'").fetchone() == (11,)
     assert db.execute("SELECT AirportID FROM Runways").fetchone() == (11,)
     db.commit()
+
+
+def test_fenix_navaid_frequency_uses_observed_bcd_contract():
+    assert encode_frequency(112.4, "VOR") == 0x01124000
+    assert encode_frequency(495, "NDB") == 0x04950000

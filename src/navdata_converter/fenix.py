@@ -14,6 +14,22 @@ class ConversionBlocked(RuntimeError):
     pass
 
 
+def encode_frequency(value: float, kind: str) -> int:
+    """Encode NAIP radio values into Fenix's observed BCD integer format."""
+    if kind == "VOR":
+        digits = f"{value:.1f}".replace(".", "")
+        shift = 12
+    elif kind == "NDB":
+        digits = str(round(value))
+        shift = 16
+    else:
+        raise ValueError(f"unsupported navaid type: {kind}")
+    bcd = 0
+    for digit in digits:
+        bcd = (bcd << 4) | int(digit)
+    return bcd << shift
+
+
 def _next_id(connection: sqlite3.Connection, table: str) -> int:
     return int(connection.execute(f"SELECT COALESCE(MAX(ID), 0) + 1 FROM {table}").fetchone()[0])
 

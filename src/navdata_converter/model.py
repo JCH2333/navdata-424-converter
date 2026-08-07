@@ -53,7 +53,7 @@ class Navaid:
     name: str
     latitude: float
     longitude: float
-    frequency: int
+    frequency: float
     magnetic_variation: float
     elevation_ft: int
     source: SourceRef

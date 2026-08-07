@@ -104,7 +104,7 @@ def load_naip(root: Path) -> NavModel:
             try:
                 model.navaids.append(Navaid(row["SIGNIFICANT_POINT_ID"], row.get("CODE_ID") or "", kind,
                     row.get("TXT_NAME") or "", parse_dms(row.get("GEO_LAT_ACCURACY") or ""),
-                    parse_dms(row.get("GEO_LONG_ACCURACY") or ""), _number(row.get("VAL_FREQ") or "0") // divisor,
+                    parse_dms(row.get("GEO_LONG_ACCURACY") or ""), _float(row.get("VAL_FREQ") or "0") / divisor,
                     _float(row.get("VAL_MAG_VAR") or "0"), _number(row.get("VAL_ELEV") or "0"), SourceRef(filename, row_number)))
             except ValueError:
                 continue
