@@ -28,8 +28,17 @@ def parse_dms(value: str) -> float:
 
 
 def _rows(path: Path):
-    with path.open("r", encoding="gbk", errors="replace", newline="") as handle:
-        yield from csv.DictReader(handle)
+    raw = path.read_bytes()
+    # The main NAIP tables are commonly GBK, while per-airport Charts.csv is UTF-8.
+    for encoding in ("utf-8-sig", "gbk"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:  # pragma: no cover - both supported encodings failed
+        raise UnicodeDecodeError("naip", raw, 0, len(raw), "不支持的 CSV 编码")
+    yield from csv.DictReader(text.splitlines())
 
 
 def _number(value: str, default: int = 0) -> int:
