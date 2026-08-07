@@ -337,6 +337,27 @@ def test_terminal_procedure_resolution_falls_back_to_unique_designated_point(tmp
     assert resolutions == {("ZYBA", "P105"): (1, 44.81, 123.075)}
 
 
+def test_waypoint_phases_map_shared_terminal_and_designated_source_ids(tmp_path):
+    connection = sqlite3.connect(tmp_path / "source-phase-maps.db3")
+    connection.executescript("""
+        CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
+        CREATE TABLE WaypointLookup (Ident TEXT, Country TEXT, ID INTEGER);
+        CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Latitude REAL, Longtitude REAL);
+    """)
+    source = SourceRef("fixture", 1)
+    model = NavModel(Path("."), terminal_waypoints=[
+        TerminalWaypoint("one", "ZSJD", "P473", 29.347777778, 117.517222222, source, "ZS"),
+        TerminalWaypoint("two", "ZSTX", "P473", 29.347777778, 117.517222222, source, "ZS"),
+    ], waypoints=[Waypoint("designated", "P473", "P473", 29.347777778, 117.517222222, source, "ZS")])
+
+    _insert_waypoints(connection, model)
+
+    assert connection.execute("SELECT Airport, Ident, WaypointID FROM temp._fenix_source_terminal_waypoints ORDER BY Airport").fetchall() == [
+        ("ZSJD", "P473", 1), ("ZSTX", "P473", 1),
+    ]
+    assert connection.execute("SELECT Ident, WaypointID FROM temp._fenix_source_designated_waypoints").fetchall() == [("P473", 2)]
+
+
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():
     latitude, longitude = runway_threshold(40.5425, 122.3586111111111, 29, 8202)
 

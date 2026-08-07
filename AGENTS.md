@@ -138,3 +138,8 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 
 - 程序引用点优先使用同机场终端坐标页；只有该页没有对应标识时，才可使用 `DESIGNATED_POINT.csv` 中全局唯一的同标识坐标作为后备来源。多坐标指定点、已有终端坐标页歧义及没有 CSV/PDF 坐标的记录继续拒绝。该规则使 `ZYBA/P105`、`EKADO` 等有明确结构化来源的固定点参与投影，不使用参考行。
 - 最小 SQLite fixture 覆盖唯一指定点到目标航点的解析。完整候选 `output\\candidate-2608-designated-terminal-fallback-2`：终端程序由 1922 增至 1926、航段由 9021 增至 9040，程序拒绝由 75 降至 71（其中无来源坐标 3 条、目标歧义/缺失 58 条），保持拒绝仍为 292。`integrity_check=ok`；Terminals 为 99030/101618，TerminalLegs 与 TerminalLegsEx 均为 823886/845147，候选 SHA-256 `e2f9ec58f112d714da748677342fdf580cc0a94bb3bba5e8a61fe13271a28a2e`，仍不得部署或发布。
+
+## 2026-08-08 共享终端与指定点来源相位
+
+- 同一终端坐标页固定点可被多个邻近机场引用；去重后它们共用一个物理 `Waypoint`，但每个机场的程序解析都需能追溯到该 ID。临时终端来源映射现为每个 `(机场, 标识, 坐标)` 登记同一写入 ID。指定点阶段也登记 `(标识, 坐标)` 的写入 ID，以便没有本场终端坐标页时按指定点来源相位消解同址航点。两类映射均为连接内临时表，不进入输出 schema。
+- 最小 fixture 覆盖 `ZSJD/ZSTX` 共享 `P473` 终端点及同址指定点的独立来源 ID。完整候选 `output\\candidate-2608-shared-source-phases`：终端程序由 1926 增至 1984、航段由 9040 增至 9327，普通程序拒绝由 71 降至 13，目标航点歧义归零；保持拒绝仍为 292。剩余普通拒绝为 8 个 RF 弧心无来源坐标、3 个固定点无来源坐标、1 个未知程序类型和 1 个 HF 航段。`integrity_check=ok`；Waypoints 为 328831/330043，Terminals 为 99088/101618，TerminalLegs 与 TerminalLegsEx 均为 824173/845147，候选 SHA-256 `9a3f2de5a7b1e8eb2a392f13d4e31bc87c53ed62f7c3a350ca9e694a7e0ecc2b`，仍不得部署或发布。

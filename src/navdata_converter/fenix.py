@@ -212,6 +212,15 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
     } if connection.execute(
         "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='_fenix_source_terminal_waypoints'"
     ).fetchone() else {}
+    source_designated_ids = {
+        (str(ident), round(float(latitude), 9), round(float(longitude), 9)): int(waypoint_id)
+        for ident, latitude, longitude, waypoint_id in connection.execute(
+            "SELECT Ident, Latitude, Longtitude, WaypointID "
+            "FROM temp._fenix_source_designated_waypoints"
+        )
+    } if connection.execute(
+        "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='_fenix_source_designated_waypoints'"
+    ).fetchone() else {}
     resolutions: dict[tuple[str, str], tuple[int, float, float]] = {}
     failures: dict[tuple[str, str], str] = {}
     for key in required_keys:
@@ -228,6 +237,8 @@ def _terminal_waypoint_resolutions(connection: sqlite3.Connection, model: NavMod
             continue
         latitude, longitude = next(iter(locations))
         source_id = source_terminal_ids.get((airport, ident, latitude, longitude))
+        if source_id is None and key not in source_points:
+            source_id = source_designated_ids.get((ident, latitude, longitude))
         if source_id is not None:
             preferred = [row for row in targets.get(ident, []) if row[0] == source_id]
             if len(preferred) == 1:
@@ -427,20 +438,34 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
         designated_identities.setdefault(ident, []).append((latitude, longitude))
     next_waypoint_id = _next_id(connection, "Waypoints")
     connection.execute("DROP TABLE IF EXISTS temp._fenix_source_terminal_waypoints")
+    connection.execute("DROP TABLE IF EXISTS temp._fenix_source_designated_waypoints")
     connection.execute(
         "CREATE TEMP TABLE _fenix_source_terminal_waypoints "
         "(Airport TEXT NOT NULL, Ident TEXT NOT NULL, Latitude REAL NOT NULL, Longtitude REAL NOT NULL, WaypointID INTEGER NOT NULL)"
     )
+    connection.execute(
+        "CREATE TEMP TABLE _fenix_source_designated_waypoints "
+        "(Ident TEXT NOT NULL, Latitude REAL NOT NULL, Longtitude REAL NOT NULL, WaypointID INTEGER NOT NULL)"
+    )
+    terminal_point_ids: dict[tuple[str, float, float], int] = {}
     terminal_count = 0
     for point in model.terminal_waypoints:
         locations = terminal_identities.setdefault(point.ident, _WaypointLocations([]))
+        point_key = (point.ident, round(point.latitude, 9), round(point.longitude, 9))
         if locations.contains(point.latitude, point.longitude):
+            waypoint_id = terminal_point_ids.get(point_key)
+            if waypoint_id is not None:
+                connection.execute(
+                    "INSERT INTO temp._fenix_source_terminal_waypoints VALUES (?,?,?,?,?)",
+                    (point.airport, point.ident, point.latitude, point.longitude, waypoint_id),
+                )
             continue
         _insert_waypoint(connection, next_waypoint_id, point.ident, point.ident, point.latitude, point.longitude, point.country)
         connection.execute(
             "INSERT INTO temp._fenix_source_terminal_waypoints VALUES (?,?,?,?,?)",
             (point.airport, point.ident, point.latitude, point.longitude, next_waypoint_id),
         )
+        terminal_point_ids[point_key] = next_waypoint_id
         locations.add(point.latitude, point.longitude)
         next_waypoint_id += 1
         terminal_count += 1
@@ -453,6 +478,10 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
             continue
         name = point.name if point.name.isascii() else romanize_name(point.name)
         _insert_waypoint(connection, next_waypoint_id, point.ident, name, point.latitude, point.longitude, point.country)
+        connection.execute(
+            "INSERT INTO temp._fenix_source_designated_waypoints VALUES (?,?,?,?)",
+            (point.ident, point.latitude, point.longitude, next_waypoint_id),
+        )
         designated_identities.setdefault(point.ident, []).append((point.latitude, point.longitude))
         next_waypoint_id += 1
         designated_count += 1
