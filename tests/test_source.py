@@ -1,5 +1,5 @@
-from navdata_converter.model import NavModel
-from navdata_converter.source import _feet, _rows, _surface, navaid_country, parse_dms, romanize_name
+from navdata_converter.model import ChartFixCoordinate, NavModel, ProcedureChart, SourceRef
+from navdata_converter.source import _feet, _load_terminal_coordinate_pages, _rows, _surface, navaid_country, parse_dms, romanize_name
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -41,3 +41,33 @@ def test_navaid_country_prefers_serviced_airport_and_falls_back_to_fir():
 def test_nav_model_keeps_rejected_source_records_for_reporting(tmp_path):
     model = NavModel(tmp_path)
     assert model.rejected_records == []
+
+
+def test_terminal_coordinate_pages_preserve_pdf_sources(monkeypatch, tmp_path):
+    airport_directory = tmp_path / "Terminal" / "ZYYK"
+    airport_directory.mkdir(parents=True)
+    chart = ProcedureChart(
+        "ZYYK", "ZYYK-4Y01.pdf", 1, "terminal-coordinate-page", "coordinates", "text-hash", (), (), (), (),
+        (ChartFixCoordinate("YK401", 40.5944444444, 121.8038888889, "N40 35 40 E121 48 14"),),
+        SourceRef("ignored", 1, 1, "pdf-hash"),
+    )
+    monkeypatch.setattr("navdata_converter.source.extract_airport_coordinate_pages", lambda _: [chart])
+    model = NavModel(tmp_path)
+
+    _load_terminal_coordinate_pages(model)
+
+    assert [(item.airport, item.ident, item.source.file, item.source.page, item.source.sha256) for item in model.terminal_waypoints] == [
+        ("ZYYK", "YK401", "Terminal/ZYYK/ZYYK-4Y01.pdf", 1, "pdf-hash"),
+    ]
+
+
+def test_terminal_coordinate_page_with_no_pairs_is_explicitly_rejected(monkeypatch, tmp_path):
+    airport_directory = tmp_path / "Terminal" / "ZBAD"
+    airport_directory.mkdir(parents=True)
+    chart = ProcedureChart("ZBAD", "ZBAD-4Y01.pdf", 1, "terminal-coordinate-page", "coordinates", "text-hash", (), (), (), (), (), SourceRef("ignored"))
+    monkeypatch.setattr("navdata_converter.source.extract_airport_coordinate_pages", lambda _: [chart])
+    model = NavModel(tmp_path)
+
+    _load_terminal_coordinate_pages(model)
+
+    assert [(item.kind, item.key) for item in model.rejected_records] == [("terminal-coordinate-page", "ZBAD")]

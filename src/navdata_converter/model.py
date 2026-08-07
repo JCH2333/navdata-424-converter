@@ -71,6 +71,22 @@ class Waypoint:
 
 
 @dataclass(frozen=True)
+class TerminalWaypoint:
+    """A terminal waypoint printed on an indexed coordinate-page PDF.
+
+    This stays separate from structured designated points until the Fenix
+    adapter has resolved physical identity and its deterministic ID phase.
+    """
+
+    key: str
+    airport: str
+    ident: str
+    latitude: float
+    longitude: float
+    source: SourceRef
+
+
+@dataclass(frozen=True)
 class AirwayLeg:
     airway: str
     sequence: int
@@ -137,6 +153,7 @@ class NavModel:
     runways: list[Runway] = field(default_factory=list)
     navaids: list[Navaid] = field(default_factory=list)
     waypoints: list[Waypoint] = field(default_factory=list)
+    terminal_waypoints: list[TerminalWaypoint] = field(default_factory=list)
     airway_legs: list[AirwayLeg] = field(default_factory=list)
     rejected_records: list[RejectedRecord] = field(default_factory=list)
     rejected_procedures: list[RejectedProcedure] = field(default_factory=list)
