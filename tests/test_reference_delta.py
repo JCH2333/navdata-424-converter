@@ -86,10 +86,13 @@ def test_approach_chart_coverage_compares_indexed_runways_to_fenix_proc_three(tm
         "reference_without_evidence": [{"airport": "ZYYK", "runway": "22"}],
         "reference_non_runway_name_count": 0,
         "reference_non_runway_name_sample": [],
-        "name_candidates": 1,
+        "name_candidates": 2,
         "reference_names": 2,
         "matched_names": 0,
-        "candidate_names_without_reference": [{"airport": "ZYYK", "runway": "04", "name": "I04-Z"}],
+        "candidate_names_without_reference": [
+            {"airport": "ZYYK", "runway": "04", "name": "I04"},
+            {"airport": "ZYYK", "runway": "04", "name": "I04-Z"},
+        ],
         "reference_names_without_candidate": [
             {"airport": "ZYYK", "runway": "04", "name": "R04"},
             {"airport": "ZYYK", "runway": "22", "name": "R22"},

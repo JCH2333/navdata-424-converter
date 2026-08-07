@@ -22,7 +22,7 @@ def test_derives_conservative_fenix_approach_name_candidates_from_chart_title():
     assert approach_procedure_name_candidates("RNP ILS/DME y RWY22", ("22",)) == ("I22", "R22", "I22-Y", "R22-Y")
     assert approach_procedure_name_candidates("VOR/DME RWY04", ("04",)) == ("D04",)
     assert approach_procedure_name_candidates("RNAV ILS/DME RWY01L", ("01L",)) == ("I01L",)
-    assert approach_procedure_name_candidates("RNP w RWY13", ("13",)) == ("R13-W",)
+    assert approach_procedure_name_candidates("RNP w RWY13", ("13",)) == ("R13", "R13-W")
     assert approach_procedure_name_candidates("RNP ILS/DME RWY22", ("22",)) == ("I22", "R22")
     assert approach_procedure_name_candidates("NDB/DME RWY12", ("12",)) == ("Q12",)
     assert approach_procedure_name_candidates("VOR/DME z RWY08", ("08",)) == ("D08",)
