@@ -18,6 +18,7 @@ from .model import ChartFixCoordinate, ProcedureChart, SourceRef
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
+_RUNWAY = re.compile(r"\bRWY\s?(\d{2}[LRC]?)\b")
 _WAYPOINT = re.compile(r"\b([A-Z][A-Z0-9]{1,5})\b")
 _IGNORED = {"CAAC", "ALL", "RIGHTS", "RESER", "MSA", "RNP", "ILS", "DME", "RWY", "ATC", "N", "E", "S", "W"}
 _CHART_COORDINATE = re.compile(
@@ -53,6 +54,7 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "") -> list[Procedu
     for page_number, page in enumerate(reader.pages, start=1):
         text = page.extract_text(extraction_mode="layout") or ""
         labels = tuple(sorted(set(_PROCEDURE.findall(text))))
+        runways = tuple(sorted(set(_RUNWAY.findall(text))))
         waypoints = tuple(sorted({token for token in _WAYPOINT.findall(text) if token not in _IGNORED and not token.isdigit()}))
         result.append(ProcedureChart(
             airport=airport,
@@ -61,6 +63,7 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "") -> list[Procedu
             chart_type=chart_type,
             text_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
             procedure_labels=labels,
+            runways=runways,
             waypoints=waypoints,
             fix_coordinates=extract_fix_coordinates(text),
             source=SourceRef(str(pdf), page_number, page_number, file_hash),

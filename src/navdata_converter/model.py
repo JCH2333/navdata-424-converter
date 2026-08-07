@@ -103,6 +103,7 @@ class ProcedureChart:
     chart_type: str
     text_sha256: str
     procedure_labels: tuple[str, ...]
+    runways: tuple[str, ...]
     waypoints: tuple[str, ...]
     fix_coordinates: tuple["ChartFixCoordinate", ...]
     source: SourceRef
