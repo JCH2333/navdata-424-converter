@@ -344,7 +344,7 @@ def test_rejection_report_preserves_unmapped_source_record(tmp_path):
     assert report["rejected_records"] == [{"kind": "VOR", "key": "TD", "reason": "unmapped country", "source": {"file": "VOR.csv", "row": 13, "page": None, "sha256": None}}]
 
 
-def test_waypoint_phases_keep_designated_collocation_observable(tmp_path):
+def test_waypoint_phases_keep_terminal_and_designated_collocation_observable(tmp_path):
     connection = sqlite3.connect(tmp_path / "waypoints.db3")
     connection.executescript("""
         CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
@@ -360,8 +360,8 @@ def test_waypoint_phases_keep_designated_collocation_observable(tmp_path):
 
     counts = _insert_waypoints(connection, model)
 
-    assert counts == {"terminal_waypoints_inserted": 1, "designated_waypoints_inserted": 1, "navaid_waypoints_inserted": 0}
-    assert connection.execute("SELECT ID, Ident, Collocated FROM Waypoints ORDER BY ID").fetchall() == [(1, "OLD", 0), (2, "TERM", 0), (3, "DES", 0)]
+    assert counts == {"terminal_waypoints_inserted": 2, "designated_waypoints_inserted": 1, "navaid_waypoints_inserted": 0}
+    assert connection.execute("SELECT ID, Ident, Collocated FROM Waypoints ORDER BY ID").fetchall() == [(1, "OLD", 0), (2, "TERM", 0), (3, "SKIP", 0), (4, "DES", 0)]
 
 
 def test_designated_waypoint_prefers_nearby_official_record_with_same_ident(tmp_path):

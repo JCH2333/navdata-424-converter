@@ -128,3 +128,8 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 
 - 终端坐标页点与指定点/台站同标识、同坐标时，二者均需保留为独立的来源相位；但数据库编码程序明确引用终端坐标页点。转换时在连接内建立临时的终端来源点映射，仅在该 `(机场, 标识, 坐标)` 唯一对应本轮终端写入航点时优先解析该 ID。映射不进入输出 schema，不删除或修改同址的指定点和台站航点；缺少唯一终端映射时仍采用精确/近距规则并拒绝歧义。
 - `ZSRZ/P09` 最小 fixture 验证两个目标同坐标时可由终端来源相位唯一选择其写入 ID。完整候选 `output\\candidate-2608-terminal-source-phase`：终端程序由 1498 增至 1857、航段由 6997 增至 8496，程序拒绝由 499 降至 140，保持拒绝仍为 292。`integrity_check=ok`；Terminals 为 98961/101618，TerminalLegs 与 TerminalLegsEx 均为 823342/845147，候选 SHA-256 `9c4b56567b9a8b4d786fe7065889a384425e4100efd7829c00bd29f3b35e46f2`，仍不得部署或发布。
+
+## 2026-08-08 终端航点同标识去重
+
+- 终端航点阶段此前按纯位置排除已存在航点，导致数据库编码页引用的 `ZHQQ/QQ508`、`ZUBD/P79`、`ZUXC/XC900` 等来源固定点被近距但不同标识的航点、台站或跑道标签抑制。终端坐标页已由程序引用，故去重条件收紧为“同标识且近距”；不同标识的同址点均保留，指定点和台站阶段仍独立。
+- 最小 fixture 断言终端点 `SKIP` 即使与既有 `OLD` 同址也会写入。完整候选 `output\\candidate-2608-terminal-identities`：终端航点由 6232 增至 6463、终端程序由 1857 增至 1922、航段由 8496 增至 9021，程序拒绝由 140 降至 75，且“来源坐标存在但无目标航点”的拒绝归零；保持拒绝仍为 292。`integrity_check=ok`；Waypoints 为 328831/330043，Terminals 为 99026/101618，TerminalLegs 与 TerminalLegsEx 均为 823867/845147，候选 SHA-256 `84fcb5610bb8fe81e3efe3d4e74b180fdb35bc273a3f0e87728dc1eeb8b01d31`，仍不得部署或发布。

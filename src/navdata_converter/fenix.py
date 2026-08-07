@@ -401,8 +401,9 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
     Terminal and designated records intentionally use independent base checks:
     the reference keeps some collocated records from both source phases.
     """
-    official_rows = list(connection.execute("SELECT Latitude, Longtitude FROM Waypoints"))
-    terminal_locations = _WaypointLocations(official_rows)
+    terminal_identities: dict[str, _WaypointLocations] = {}
+    for ident, latitude, longitude in connection.execute("SELECT Ident, Latitude, Longtitude FROM Waypoints"):
+        terminal_identities.setdefault(str(ident), _WaypointLocations([])).add(float(latitude), float(longitude))
     designated_identities: dict[str, list[tuple[float, float]]] = {}
     for ident, latitude, longitude in connection.execute("SELECT Ident, Latitude, Longtitude FROM Waypoints"):
         designated_identities.setdefault(ident, []).append((latitude, longitude))
@@ -414,14 +415,15 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
     )
     terminal_count = 0
     for point in model.terminal_waypoints:
-        if terminal_locations.contains(point.latitude, point.longitude):
+        locations = terminal_identities.setdefault(point.ident, _WaypointLocations([]))
+        if locations.contains(point.latitude, point.longitude):
             continue
         _insert_waypoint(connection, next_waypoint_id, point.ident, point.ident, point.latitude, point.longitude, point.country)
         connection.execute(
             "INSERT INTO temp._fenix_source_terminal_waypoints VALUES (?,?,?,?,?)",
             (point.airport, point.ident, point.latitude, point.longitude, next_waypoint_id),
         )
-        terminal_locations.add(point.latitude, point.longitude)
+        locations.add(point.latitude, point.longitude)
         next_waypoint_id += 1
         terminal_count += 1
     designated_count = 0
