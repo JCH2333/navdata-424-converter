@@ -108,3 +108,8 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 
 - 新增机场投影对非 ASCII 的 `AD_HP.csv` `TXT_NAME` 使用确定性拼音，并把源分隔符 `/` 规范为空格；ASCII 名称保持原样。该规则完全由 CSV 名称驱动，不读取或复制参考名称。
 - 用同一重解析模型生成 `output\\candidate-2608-airport-name` 并与只读参考逐字段比较：机场差异从 188 条降至 102 条，`Name` 差异从 188 条降至 81 条；坐标、标高、过渡高度、过渡层和 `SpeedLimit` 仍为零差异，`SpeedLimitAltitude` 仍有 44 条差异。候选 SHA-256 为 `42297b3b2d2210a8d3c785f3e59651a875d2d4ba51f2a15257fbc9638ebfd1a0`，仍不等于参考，禁止部署或发布。
+
+## 2026-08-07 数据库编码页面拒绝分类
+
+- `Charts.csv` 的“数据库编码”行通常带有标准仪表图类型；此前 `_reject_unparsed_charts` 仅按图类型筛选，导致已由 `extract_airport_database_charts` 解析为终端航段的页面又被错误登记为未解析。现按图名先排除数据库编码页，并以最小 CSV fixture 覆盖。
+- 重新解析后，终端 PDF 拒绝从 7969 条降至 6389 条，精确减少 1580 个数据库编码页面；`procedure_charts=7356`、`procedure_segments=4853`、投影终端程序 1414 和航段 6601 均保持不变。`output\\candidate-2608-database-pages` 的完整表级差分与机场名称候选一致，`integrity_check=ok`，SHA-256 仍为 `42297b3b2d2210a8d3c785f3e59651a875d2d4ba51f2a15257fbc9638ebfd1a0`，不得部署或发布。

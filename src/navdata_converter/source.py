@@ -345,7 +345,13 @@ def _reject_unparsed_charts(model: NavModel) -> None:
         airport = index.parent.name
         for row_number, row in enumerate(_rows(index), start=2):
             kind = row.get("ChartTypeEx_CH") or ""
+            chart = row.get("ChartName") or f"第{row_number}行"
+            # Database-coding pages are handled by _load_terminal_database_charts.
+            # Their publisher type is also an instrument chart, so excluding
+            # them here prevents a successfully parsed source page from being
+            # reported as an unparsed procedure.
+            if "数据库编码" in chart:
+                continue
             if "仪表" not in kind and "进近" not in kind:
                 continue
-            chart = row.get("ChartName") or f"第{row_number}行"
             model.rejected_procedures.append(RejectedProcedure(airport, chart, "终端 PDF 语义提取尚未完成", SourceRef(str(index.relative_to(model.root)), row_number)))

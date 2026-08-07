@@ -1,7 +1,7 @@
 from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, Ils, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
 import pytest
 
-from navdata_converter.source import _airport_altitude_feet, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
+from navdata_converter.source import _airport_altitude_feet, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _reject_unparsed_charts, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -69,6 +69,24 @@ def test_waypoint_country_uses_naip_fir_prefix():
 def test_nav_model_keeps_rejected_source_records_for_reporting(tmp_path):
     model = NavModel(tmp_path)
     assert model.rejected_records == []
+
+
+def test_reject_unparsed_charts_skips_database_coding_pages_already_parsed(tmp_path):
+    airport = tmp_path / "Terminal" / "ZYYK"
+    airport.mkdir(parents=True)
+    (airport / "Charts.csv").write_text(
+        "ChartName,ChartTypeEx_CH\n"
+        "数据库编码,标准仪表进场图\n"
+        "STAR RWY22,标准仪表进场图\n",
+        encoding="utf-8",
+    )
+    model = NavModel(tmp_path)
+
+    _reject_unparsed_charts(model)
+
+    assert [(item.airport, item.chart, item.source.row) for item in model.rejected_procedures] == [
+        ("ZYYK", "STAR RWY22", 3),
+    ]
 
 
 def test_pdf_evidence_cache_cannot_be_written_into_naip_source(tmp_path):
