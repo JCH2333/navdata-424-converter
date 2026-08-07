@@ -88,6 +88,14 @@ class RejectedProcedure:
 
 
 @dataclass(frozen=True)
+class RejectedRecord:
+    kind: str
+    key: str
+    reason: str
+    source: SourceRef
+
+
+@dataclass(frozen=True)
 class ProcedureChart:
     airport: str
     filename: str
@@ -118,5 +126,6 @@ class NavModel:
     navaids: list[Navaid] = field(default_factory=list)
     waypoints: list[Waypoint] = field(default_factory=list)
     airway_legs: list[AirwayLeg] = field(default_factory=list)
+    rejected_records: list[RejectedRecord] = field(default_factory=list)
     rejected_procedures: list[RejectedProcedure] = field(default_factory=list)
     procedure_charts: list[ProcedureChart] = field(default_factory=list)

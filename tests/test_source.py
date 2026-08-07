@@ -1,3 +1,4 @@
+from navdata_converter.model import NavModel
 from navdata_converter.source import _feet, _rows, _surface, navaid_country, parse_dms, romanize_name
 
 
@@ -35,3 +36,8 @@ def test_romanize_name_matches_observed_fenix_spelling():
 def test_navaid_country_prefers_serviced_airport_and_falls_back_to_fir():
     assert navaid_country("ZBHZ", "") == "ZB"
     assert navaid_country("", "\u6c88\u9633\u60c5\u62a5\u533a") == "ZY"
+
+
+def test_nav_model_keeps_rejected_source_records_for_reporting(tmp_path):
+    model = NavModel(tmp_path)
+    assert model.rejected_records == []

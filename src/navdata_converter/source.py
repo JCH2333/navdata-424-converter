@@ -7,7 +7,7 @@ from pathlib import Path
 
 from pypinyin import lazy_pinyin
 
-from .model import CN_PREFIXES, Airport, AirwayLeg, NavModel, Navaid, RejectedProcedure, Runway, SourceRef, Waypoint, is_china_icao
+from .model import CN_PREFIXES, Airport, AirwayLeg, NavModel, Navaid, RejectedProcedure, RejectedRecord, Runway, SourceRef, Waypoint, is_china_icao
 
 
 _FIR_COUNTRIES = {
@@ -139,7 +139,12 @@ def load_naip(root: Path) -> NavModel:
                     _float(row.get("VAL_MAG_VAR") or "0"), _number(row.get("VAL_ELEV") or "0"),
                     navaid_country(row.get("SERVICED_AIRPORT") or "", row.get("CODE_FIR") or ""), SourceRef(filename, row_number)))
             except ValueError:
-                continue
+                model.rejected_records.append(RejectedRecord(
+                    kind=kind,
+                    key=row.get("CODE_ID") or row.get("SIGNIFICANT_POINT_ID") or "",
+                    reason="invalid coordinate or unmapped country",
+                    source=SourceRef(filename, row_number),
+                ))
     for row_number, row in enumerate(_rows(root / "DESIGNATED_POINT.csv"), start=2):
         try:
             model.waypoints.append(Waypoint(row["SIGNIFICANT_POINT_ID"], row.get("CODE_ID") or "", row.get("TXT_NAME") or "",

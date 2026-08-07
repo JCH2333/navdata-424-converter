@@ -77,8 +77,11 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
 
 def convert(official_navdata: Path, model: NavModel, output: Path, reference: Path | None = None, *, allow_incomplete: bool = False) -> dict[str, object]:
     profile = validate_fenix_profile(official_navdata / "nd.db3")
-    if model.rejected_procedures and not allow_incomplete:
-        raise ConversionBlocked(f"发现 {len(model.rejected_procedures)} 个未可靠解析的程序图表，已拒绝生成候选")
+    if (model.rejected_procedures or model.rejected_records) and not allow_incomplete:
+        raise ConversionBlocked(
+            f"检测到 {len(model.rejected_procedures)} 个未解析程序和 "
+            f"{len(model.rejected_records)} 条无效源记录"
+        )
     database = _copy_navdata(official_navdata, output)
     try:
         with sqlite3.connect(database) as connection:
@@ -86,8 +89,10 @@ def convert(official_navdata: Path, model: NavModel, output: Path, reference: Pa
             counts = _insert_model(connection, model)
             connection.commit()
             connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        report = {"status": "incomplete" if model.rejected_procedures else "candidate", "test_build": True, "deployable": not model.rejected_procedures,
+        incomplete = bool(model.rejected_procedures or model.rejected_records)
+        report = {"status": "incomplete" if incomplete else "candidate", "test_build": True, "deployable": not incomplete,
                   "profile": profile["config"], "counts": counts, "rejected_procedures": [asdict(item) for item in model.rejected_procedures],
+                  "rejected_records": [asdict(item) for item in model.rejected_records],
                   "reference": str(reference) if reference else None}
         (output / "conversion-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return report
@@ -98,7 +103,8 @@ def convert(official_navdata: Path, model: NavModel, output: Path, reference: Pa
 
 def build_rejection_report(model: NavModel, output: Path) -> Path:
     output.mkdir(parents=True, exist_ok=True)
-    report = {"status": "blocked", "test_build": True, "rejected_procedures": [asdict(item) for item in model.rejected_procedures]}
+    report = {"status": "blocked", "test_build": True, "rejected_procedures": [asdict(item) for item in model.rejected_procedures],
+              "rejected_records": [asdict(item) for item in model.rejected_records]}
     target = output / "conversion-report.json"
     target.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return target

@@ -1,8 +1,9 @@
+import json
 import sqlite3
 from pathlib import Path
 
-from navdata_converter.fenix import _insert_model, encode_frequency
-from navdata_converter.model import Airport, NavModel, Runway, SourceRef
+from navdata_converter.fenix import _insert_model, build_rejection_report, encode_frequency
+from navdata_converter.model import Airport, NavModel, RejectedRecord, Runway, SourceRef
 
 
 def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path):
@@ -29,3 +30,11 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
 def test_fenix_navaid_frequency_uses_observed_bcd_contract():
     assert encode_frequency(112.4, "VOR") == 0x01124000
     assert encode_frequency(495, "NDB") == 0x04950000
+
+
+def test_rejection_report_preserves_unmapped_source_record(tmp_path):
+    model = NavModel(tmp_path, rejected_records=[RejectedRecord("VOR", "TD", "unmapped country", SourceRef("VOR.csv", 13))])
+
+    report = json.loads(build_rejection_report(model, tmp_path / "report").read_text(encoding="utf-8"))
+
+    assert report["rejected_records"] == [{"kind": "VOR", "key": "TD", "reason": "unmapped country", "source": {"file": "VOR.csv", "row": 13, "page": None, "sha256": None}}]
