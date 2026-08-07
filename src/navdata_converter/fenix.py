@@ -633,7 +633,8 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
         airport_id = next_airport
         next_airport += 1
         airport_ids[airport.key] = airport_id
-        connection.execute("INSERT INTO Airports VALUES (?,?,?,?,?,?,?,?,?,?,?)", (airport_id, airport.name, airport.icao, None,
+        name = airport.name if airport.name.isascii() else romanize_name(airport.name.replace("/", " "))
+        connection.execute("INSERT INTO Airports VALUES (?,?,?,?,?,?,?,?,?,?,?)", (airport_id, name, airport.icao, None,
             airport.latitude, airport.longitude, airport.elevation_ft, airport.transition_altitude, airport.transition_level, 250, 10000))
         connection.execute("INSERT INTO AirportLookup VALUES (?,?)", (airport.icao, airport_id))
         inserted_airports.add(airport.key)

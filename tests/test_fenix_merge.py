@@ -27,9 +27,28 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
     counts = _insert_model(db, model)
     assert counts == {"airports_inserted": 1, "airports_preserved": 1, "runways_inserted": 1, "navaids_inserted": 0}
     assert db.execute("SELECT ID, Name FROM Airports WHERE ICAO='ZBAA'").fetchone() == (10, "BASE")
-    assert db.execute("SELECT ID FROM Airports WHERE ICAO='ZBCF'").fetchone() == (11,)
+    assert db.execute("SELECT ID, Name FROM Airports WHERE ICAO='ZBCF'").fetchone() == (11, "new")
     assert db.execute("SELECT AirportID FROM Runways").fetchone() == (11,)
     db.commit()
+
+
+def test_merge_romanizes_source_backed_chinese_airport_name(tmp_path):
+    db = sqlite3.connect(tmp_path / "test.db3")
+    db.executescript("""
+        CREATE TABLE Airports (ID INTEGER, Name TEXT, ICAO TEXT, PrimaryID INTEGER, Latitude REAL, Longtitude REAL, Elevation INTEGER, TransitionAltitude INTEGER, TransitionLevel INTEGER, SpeedLimit INTEGER, SpeedLimitAltitude INTEGER);
+        CREATE TABLE AirportLookup (extID TEXT, ID INTEGER);
+        CREATE TABLE Runways (ID INTEGER, AirportID INTEGER, Ident TEXT, TrueHeading REAL, Length INTEGER, Width INTEGER, Surface TEXT, Latitude REAL, Longtitude REAL, Elevation INTEGER);
+        CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Name TEXT, Freq INTEGER, Channel TEXT, Usage TEXT, Latitude REAL, Longtitude REAL, Elevation INTEGER, SlavedVar REAL, MagneticVariation REAL, Range INTEGER);
+        CREATE TABLE NavaidLookup (Ident TEXT, Type TEXT, Country TEXT, NavKeyCode TEXT, ID INTEGER);
+    """)
+    source = SourceRef("AD_HP.csv", 29)
+    model = NavModel(Path("."), airports={
+        "zbcf": Airport("zbcf", "ZBCF", "赤峰/玉龙", 42.159722, 118.840833, 2041, 0, 0, source),
+    })
+
+    _insert_model(db, model)
+
+    assert db.execute("SELECT Name FROM Airports WHERE ICAO='ZBCF'").fetchone() == ("CHIFENG YULONG",)
 
 
 def test_clears_only_china_airport_domain_in_foreign_key_order(tmp_path):

@@ -103,3 +103,8 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 - 基于该模型生成 `output\\candidate-2608-latest`。候选状态仍为 `incomplete`，插入机场 188、跑道 376、台站 140、ILS 142、终端航点 6232、终端程序 1414、终端航段 6601；ILS 拒绝 58 条。
 - 与只读 `fnx2608N` 参考库按机场 ICAO 逐字段比较：机场键集合一致；`Latitude`、`Longtitude`、`TransitionAltitude`、`TransitionLevel`、`Elevation`、`SpeedLimit` 均无差异。剩余 188 条 `Name` 差异和 44 条 `SpeedLimitAltitude` 差异。机场 PDF 图页仅出现中文机场标题（例如 `赤峰/玉龙`），当前没有 CSV/PDF 中可追溯的参考英文名称或限速高度字段，故本轮不回填、不硬编码。
 - 候选数据库 `integrity_check=ok`，schema 与参考相同；候选与参考 SHA-256 仍不同（未达到字节级一致），不得部署或发布。
+
+## 2026-08-07 机场名称拼音投影
+
+- 新增机场投影对非 ASCII 的 `AD_HP.csv` `TXT_NAME` 使用确定性拼音，并把源分隔符 `/` 规范为空格；ASCII 名称保持原样。该规则完全由 CSV 名称驱动，不读取或复制参考名称。
+- 用同一重解析模型生成 `output\\candidate-2608-airport-name` 并与只读参考逐字段比较：机场差异从 188 条降至 102 条，`Name` 差异从 188 条降至 81 条；坐标、标高、过渡高度、过渡层和 `SpeedLimit` 仍为零差异，`SpeedLimitAltitude` 仍有 44 条差异。候选 SHA-256 为 `42297b3b2d2210a8d3c785f3e59651a875d2d4ba51f2a15257fbc9638ebfd1a0`，仍不等于参考，禁止部署或发布。
