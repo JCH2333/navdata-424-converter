@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_from_text, _chart_rows, extract_airport_approach_charts, extract_airport_database_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _chart_from_text, _chart_rows, approach_procedure_name_candidates, extract_airport_approach_charts, extract_airport_database_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_terminal_leg_evidence
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -14,6 +14,19 @@ def test_expands_slash_separated_runways_in_approach_chart_title():
     chart = _chart_from_text(Path("ZGUH-6A.pdf"), "ZGUH", "instrument-approach-index", "VOR/DME RWY16/34", 1, "", "hash")
 
     assert chart.runways == ("16", "34")
+
+
+def test_derives_conservative_fenix_approach_name_candidates_from_chart_title():
+    assert approach_procedure_name_candidates("RNAV ILS/DME z RWY01", ("01",)) == ("I01-Z",)
+    assert approach_procedure_name_candidates("RNP x RWY18L(AR)", ("18L",)) == ("R18L-X",)
+    assert approach_procedure_name_candidates("RNP ILS/DME y RWY22", ("22",)) == ("I22-Y", "R22-Y")
+    assert approach_procedure_name_candidates("VOR/DME RWY04", ("04",)) == ("D04",)
+    assert approach_procedure_name_candidates("RNAV ILS/DME RWY01L", ("01L",)) == ("I01L",)
+    assert approach_procedure_name_candidates("RNP w RWY13", ("13",)) == ("R13-W",)
+    assert approach_procedure_name_candidates("RNP ILS/DME RWY22", ("22",)) == ("I22", "R22")
+    assert approach_procedure_name_candidates("NDB/DME RWY12", ("12",)) == ("Q12",)
+    assert approach_procedure_name_candidates("VOR/DME z RWY08", ("08",)) == ("D08",)
+    assert approach_procedure_name_candidates("RNP y RWY16R(AR)", ("16L", "16R")) == ("R16R-Y",)
 
 
 def test_extracts_explicit_chart_coordinates_without_inventing_a_leg():

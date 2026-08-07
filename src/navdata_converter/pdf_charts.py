@@ -22,6 +22,7 @@ from .model import ChartFixCoordinate, ChartTerminalLeg, ProcedureChart, SourceR
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
 _RUNWAY = re.compile(r"\bRWY\s?(\d{2}[LRC]?)\b")
 _SHARED_RUNWAYS = re.compile(r"\bRWY\s?\d{2}[LRC]?(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)+\b")
+_APPROACH_VARIANT = re.compile(r"\b(?P<variant>[WXYZ])\s+RWY\s?\d{2}[LRC]?\b", re.IGNORECASE)
 _WAYPOINT = re.compile(r"\b([A-Z][A-Z0-9]{1,5})\b")
 _IGNORED = {"CAAC", "ALL", "RIGHTS", "RESER", "MSA", "RNP", "ILS", "DME", "RWY", "ATC", "N", "E", "S", "W"}
 _CHART_COORDINATE = re.compile(
@@ -68,6 +69,38 @@ def _extract_runways(text: str) -> tuple[str, ...]:
     for match in _SHARED_RUNWAYS.finditer(text):
         runways.update(re.findall(r"\d{2}[LRC]?", match.group(0)))
     return tuple(sorted(runways))
+
+
+def approach_procedure_name_candidates(chart_name: str, runways: tuple[str, ...]) -> tuple[str, ...]:
+    """Derive only title-supported Fenix approach-name candidates.
+
+    CAAC titles explicitly carry the ILS/RNP family and X/Y/Z variant for
+    some charts.  Names without that variant are intentionally reduced to the
+    observed generic runway form, while a combined RNP ILS title retains both
+    possible families for read-only reference comparison.
+    """
+    title = chart_name.upper()
+    title_runways = _extract_runways(title)
+    variant_match = _APPROACH_VARIANT.search(title)
+    variant = variant_match["variant"].upper() if variant_match else ""
+    families = (
+        ([] if "ILS" not in title else ["I"])
+        + ([] if "RNP" not in title else ["R"])
+        + ([] if "VOR/DME" not in title else ["D"])
+        + (["Q"] if "NDB/DME" in title else ([] if "NDB" not in title else ["N"]))
+    )
+    candidates: list[str] = []
+    for runway in title_runways or runways:
+        if not variant:
+            candidates.extend(f"{family}{runway}" for family in families or ["R"])
+            continue
+        for family in families:
+            if family in {"D", "N", "Q"}:
+                candidates.append(f"{family}{runway}")
+                continue
+            separator = "" if family == "I" and len(runway) > 2 else "-"
+            candidates.append(f"{family}{runway}{separator}{variant}")
+    return tuple(dict.fromkeys(candidates))
 
 
 def extract_coordinate_page_points(text: str) -> tuple[ChartFixCoordinate, ...]:

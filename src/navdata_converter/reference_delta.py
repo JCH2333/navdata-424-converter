@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 from .model import NavModel
+from .pdf_charts import approach_procedure_name_candidates
 
 
 def _db(path: Path) -> Path:
@@ -185,6 +186,17 @@ def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[st
         for icao, runway, _ in rows
         if str(icao).upper() in {airport for airport, _ in evidence} and _runway_key(runway)
     }
+    name_candidates = {
+        (chart.airport.upper(), _runway_key(runway), name)
+        for chart in charts
+        for runway in chart.runways
+        for name in approach_procedure_name_candidates(chart.chart_name, (_runway_key(runway),))
+    }
+    reference_names = {
+        (str(icao).upper(), _runway_key(runway), str(name or "").upper())
+        for icao, runway, name in rows
+        if str(icao).upper() in {airport for airport, _ in evidence} and _runway_key(runway)
+    }
     non_runway_names = [
         {"airport": str(icao).upper(), "runway": _runway_key(runway), "name": str(name or "")}
         for icao, runway, name in rows
@@ -194,6 +206,8 @@ def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[st
     ]
     def payload(pair: tuple[str, str]) -> dict[str, str]:
         return {"airport": pair[0], "runway": pair[1]}
+    def name_payload(item: tuple[str, str, str]) -> dict[str, str]:
+        return {"airport": item[0], "runway": item[1], "name": item[2]}
     return {
         "evidence_pages": len(charts),
         "evidence_pairs": len(evidence),
@@ -203,4 +217,9 @@ def inspect_approach_chart_coverage(model: NavModel, reference: Path) -> dict[st
         "reference_without_evidence": [payload(pair) for pair in sorted(reference_pairs - evidence)[:20]],
         "reference_non_runway_name_count": len(non_runway_names),
         "reference_non_runway_name_sample": non_runway_names[:20],
+        "name_candidates": len(name_candidates),
+        "reference_names": len(reference_names),
+        "matched_names": len(name_candidates & reference_names),
+        "candidate_names_without_reference": [name_payload(item) for item in sorted(name_candidates - reference_names)[:20]],
+        "reference_names_without_candidate": [name_payload(item) for item in sorted(reference_names - name_candidates)[:20]],
     }

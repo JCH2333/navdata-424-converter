@@ -15,3 +15,5 @@ python -m navdata_converter.cli inspect-approach-chart-coverage `
 输出中的 `reference_without_evidence` 是后续优先解析的缺口；`evidence_without_reference` 则需要人工检查图表索引、跑道命名和成品数据，不能据此直接补写程序。
 
 诊断会单独报告不等于 `R{跑道号}` 的成品进近名称。它们通常是同一跑道上的 ILS、RNP 或其他独立进近程序，必须通过图表内容继续解析；不能将它们视为异常或用跑道简名替代。
+
+当前会从标题中保守推导名称候选，且名称推导只使用标题中的跑道，避免正文附带的其他跑道污染。带 `ILS/DME w/x/y/z` 或 `RNP w/x/y/z` 的标题可给出相应的 `I...` 或 `R...` 变体；无变体的 ILS、RNP、VOR/DME、NDB、NDB/DME 标题分别给出 `I`、`R`、`D`、`N`、`Q` 前缀。VOR/DME、NDB、NDB/DME 不保留标题变体字母。`matched_names` 只衡量候选与成品的精确交集，不能作为写入许可。
