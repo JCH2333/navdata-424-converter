@@ -422,6 +422,13 @@ def test_extracts_identifier_next_to_black_vector_route_stroke():
     assert extract_vector_route_fixes(words, drawings) == (ChartRouteFix("HZ412", "VECTOR"),)
 
 
+def test_extracts_identifier_next_to_black_filled_vector_route_path():
+    words = [(40.0, 18.0, 66.0, 26.0, "HZ413", 1, 0, 0)]
+    drawings = [{"type": "f", "fill": (0.0, 0.0, 0.0), "items": [("l", (30.0, 22.0), (72.0, 22.0))]}]
+
+    assert extract_vector_route_fixes(words, drawings) == (ChartRouteFix("HZ413", "VECTOR"),)
+
+
 def test_vector_route_evidence_ignores_long_map_outline_strokes():
     words = [(90.0, 18.0, 116.0, 26.0, "MAP01", 1, 0, 0)]
     drawings = [{"type": "s", "color": (0.0, 0.0, 0.0), "width": 0.42, "items": [("l", (0.0, 22.0), (200.0, 22.0))]}]
@@ -485,10 +492,17 @@ def test_standard_procedure_chart_selection_uses_sid_and_star_index_types(monkey
     (airport / "ZYYK-4A.pdf").write_bytes(b"placeholder")
     (airport / "ZYYK-4Z01.pdf").write_bytes(b"placeholder")
     calls = []
-    monkeypatch.setattr("navdata_converter.pdf_charts.extract_approach_chart", lambda pdf, airport_code, chart_type, chart_name: calls.append((pdf.name, chart_type, chart_name)) or [])
+    monkeypatch.setattr(
+        "navdata_converter.pdf_charts.extract_approach_chart",
+        lambda pdf, airport_code, chart_type, chart_name, *, include_vector_evidence=False:
+        calls.append((pdf.name, chart_type, chart_name, include_vector_evidence)) or [],
+    )
 
     assert extract_airport_standard_procedure_charts(airport) == []
-    assert calls == [("ZYYK-3A.pdf", "standard-terminal-procedure", "SID RWY04"), ("ZYYK-4A.pdf", "standard-terminal-procedure", "STAR RWY22")]
+    assert calls == [
+        ("ZYYK-3A.pdf", "standard-terminal-procedure", "SID RWY04", True),
+        ("ZYYK-4A.pdf", "standard-terminal-procedure", "STAR RWY22", True),
+    ]
 
 
 def test_pdf_evidence_cache_restores_every_chart_field_without_reopening_pdf(tmp_path):

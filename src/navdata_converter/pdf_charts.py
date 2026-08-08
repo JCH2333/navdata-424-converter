@@ -390,9 +390,16 @@ def extract_vector_route_fixes(words: list[tuple[float, float, float, float, str
                 cells.setdefault((cell_x, cell_y), []).append((start, end))
 
     for drawing in drawings:
-        if drawing.get("type") != "s" or drawing.get("color") != (0.0, 0.0, 0.0):
+        drawing_type = drawing.get("type")
+        # Standard procedure plates encode their route strokes as either a
+        # conventional black stroke or a black filled path.  The latter keeps
+        # the same line items in PyMuPDF, while its colour lives in ``fill``.
+        # Do not accept other filled artwork: it has no route meaning.
+        is_black_stroke = drawing_type == "s" and drawing.get("color") == (0.0, 0.0, 0.0)
+        is_black_fill = drawing_type == "f" and drawing.get("fill") == (0.0, 0.0, 0.0)
+        if not (is_black_stroke or is_black_fill):
             continue
-        if not 0.2 <= float(drawing.get("width") or 0.0) <= 1.0:
+        if is_black_stroke and not 0.2 <= float(drawing.get("width") or 0.0) <= 1.0:
             continue
         items = drawing.get("items", [])
         if len(items) > 96:
@@ -805,7 +812,7 @@ def _is_standard_procedure_index_row(row: dict[str, str]) -> bool:
 
 
 def extract_airport_standard_procedure_charts(airport_directory: Path, cache_dir: Path | None = None) -> list[ProcedureChart]:
-    """Extract index-declared SID/STAR pages as waypoint-label evidence."""
+    """Extract index-declared SID/STAR pages as route-label evidence."""
     index = airport_directory / "Charts.csv"
     if not index.is_file():
         raise FileNotFoundError(f"missing chart index: {index}")
@@ -818,7 +825,12 @@ def extract_airport_standard_procedure_charts(airport_directory: Path, cache_dir
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            charts.extend(_cached_extract(pdf, airport, "standard-terminal-procedure", chart_name, cache_dir, extract_approach_chart))
+            charts.extend(_cached_extract(
+                pdf, airport, "standard-terminal-procedure", chart_name, cache_dir,
+                lambda path, code, kind, name: extract_approach_chart(
+                    path, code, kind, name, include_vector_evidence=True,
+                ),
+            ))
     return charts
 
 
