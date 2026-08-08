@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartStandardProcedureRoute, ChartTerminalLeg, ProcedureChart, SourceRef
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, _positioned_database_text, _standard_procedure_routes, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_payload, _chart_from_text, _chart_rows, _chart_to_payload, _positioned_database_text, _standard_procedure_routes, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -199,6 +199,23 @@ def test_splits_multiple_printed_database_legs_in_one_row_before_reading_attribu
     assert [(item.leg_type, item.fix_ident, item.course_degrees, item.altitude_meters, item.turn_direction, item.speed_limit_knots) for item in evidence] == [
         ("CA", None, 324.0, 2100.0, None, None),
         ("DF", "AL507", None, 3000.0, "R", 230),
+    ]
+
+
+def test_rehydrates_legacy_cached_compressed_database_leg_with_current_boundaries():
+    source = SourceRef("Terminal/ZYYY/ZYYY-4Z01.pdf", page=1, sha256="hash")
+    chart = ProcedureChart(
+        "ZYYY", "ZYYY-4Z01.pdf", 1, "terminal-database-coding", "数据库编码", "hash",
+        (), ("32",), (),
+        (ChartTerminalLeg("TUNV-9W", "32", "CA", None, "CA 324 2100 RNP1 DF AL507 R 3000 MAX230 RNP1", "离场", 324.0, 2100.0),),
+        (), source,
+    )
+
+    rehydrated = _chart_from_payload(_chart_to_payload(chart))
+
+    assert [(item.leg_type, item.fix_ident, item.raw, item.altitude_meters, item.speed_limit_knots) for item in rehydrated.terminal_legs] == [
+        ("CA", None, "CA 324 2100 RNP1", 2100.0, None),
+        ("DF", "AL507", "DF AL507 R 3000 MAX230 RNP1", 3000.0, 230),
     ]
 
 

@@ -638,6 +638,32 @@ def extract_chart(pdf: Path, airport: str, chart_type: str = "", chart_name: str
     return result
 
 
+def _expand_cached_compressed_leg(leg: ChartTerminalLeg) -> tuple[ChartTerminalLeg, ...]:
+    """Apply current source-row boundaries when reading legacy chart caches."""
+    matches = list(_DATABASE_LEG.finditer(leg.raw))
+    if len(matches) < 2:
+        return (leg,)
+    rf_by_start = {match.start(): match for match in _DATABASE_RF_LEG.finditer(leg.raw)}
+    expanded = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(leg.raw)
+        fragment = leg.raw[match.start():end].strip()
+        rf_leg = rf_by_start.get(match.start())
+        leg_type = "RF" if rf_leg else match["leg_type"]
+        fix_ident = rf_leg["fix"] if rf_leg else match["fix"]
+        course, altitude, turn, speed = _database_leg_attributes(
+            [fragment], 0, leg_type, fix_ident, inline_text=fragment,
+            read_following_rows=False,
+        )
+        expanded.append(replace(
+            leg, leg_type=leg_type, fix_ident=fix_ident, raw=fragment,
+            course_degrees=course, altitude_meters=altitude,
+            turn_direction=turn, speed_limit_knots=speed,
+            center_ident=rf_leg["center"] if rf_leg else None,
+        ))
+    return tuple(expanded)
+
+
 def _chart_to_payload(chart: ProcedureChart) -> dict[str, object]:
     return {
         "airport": chart.airport,
@@ -659,12 +685,17 @@ def _chart_to_payload(chart: ProcedureChart) -> dict[str, object]:
 
 
 def _chart_from_payload(payload: dict[str, object]) -> ProcedureChart:
+    terminal_legs = [ChartTerminalLeg(**item) for item in payload["terminal_legs"]]
     return ProcedureChart(
         airport=str(payload["airport"]), filename=str(payload["filename"]), page=int(payload["page"]),
         chart_type=str(payload["chart_type"]), chart_name=str(payload["chart_name"]),
         text_sha256=str(payload["text_sha256"]), procedure_labels=tuple(payload["procedure_labels"]),
         runways=tuple(payload["runways"]), waypoints=tuple(payload["waypoints"]),
-        terminal_legs=tuple(ChartTerminalLeg(**item) for item in payload["terminal_legs"]),
+        terminal_legs=tuple(
+            expanded
+            for leg in terminal_legs
+            for expanded in _expand_cached_compressed_leg(leg)
+        ),
         fix_coordinates=tuple(ChartFixCoordinate(**item) for item in payload["fix_coordinates"]),
         source=SourceRef(**payload["source"]),
         route_fixes=tuple(ChartRouteFix(**item) for item in payload.get("route_fixes", [])),
