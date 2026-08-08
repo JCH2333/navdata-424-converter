@@ -213,6 +213,19 @@ def test_extracts_database_approach_transition_main_and_missed_segments():
     ]
 
 
+def test_splits_explicit_combined_approach_and_missed_heading_at_first_missed_leg():
+    evidence = extract_terminal_leg_evidence(
+        "RWY14 \u8fdb\u8fd1\u8fc7\u6e21 AL604\nIF AL604\nTF AL603\n"
+        "RWY14 \u8fdb\u8fd1\u53ca\u590d\u98de\nIF AL603\nTF AL602\nTF AL600\nCF AL607\nDF AL605"
+    )
+
+    assert [(item.procedure_kind, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("\u8fdb\u8fd1\u8fc7\u6e21", "IF", "AL604"), ("\u8fdb\u8fd1\u8fc7\u6e21", "TF", "AL603"),
+        ("\u8fdb\u8fd1", "IF", "AL603"), ("\u8fdb\u8fd1", "TF", "AL602"), ("\u8fdb\u8fd1", "TF", "AL600"),
+        ("\u590d\u98de", "CF", "AL607"), ("\u590d\u98de", "DF", "AL605"),
+    ]
+
+
 def test_extracts_explicit_database_approach_variants_and_matching_missed_approach():
     evidence = extract_terminal_leg_evidence(
         "RWY30 进近-Z\nTF MZ402\nCF MZ410\nRWY30 复飞-Z\nDF MZ406\n"

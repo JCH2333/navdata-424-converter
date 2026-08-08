@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 16
+_EVIDENCE_CACHE_VERSION = 17
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -44,7 +44,7 @@ _DATABASE_PROCEDURE = re.compile(
     r"(?P<label_base>[A-Z0-9]{1,6}?)-?(?P<label_suffix>\d{1,2}[A-Z]{1,2})(?:\b|\()"
 )
 _DATABASE_APPROACH_PROCEDURE = re.compile(
-    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1|\u590d\u98de)"
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1\u53ca\u590d\u98de|\u8fdb\u8fd1|\u590d\u98de)"
     r"(?:\s*-\s*(?P<variant>[WXYZ]))?"
     r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5}))?\b"
 )
@@ -463,6 +463,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     active_runway = ""
     active_kind = ""
     active_transition = ""
+    split_combined_approach_missed = False
     active_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None, str | None]] = []
     pending_rows: list[tuple[str, str | None, str, float | None, float | None, str | None, int | None, str | None]] = []
 
@@ -486,7 +487,8 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 variant = approach_heading["variant"] or ""
                 active_label = f"R{approach_heading['runway']}{f'-{variant}' if variant else ''}"
                 active_runway = approach_heading["runway"]
-                active_kind = approach_heading["kind"]
+                split_combined_approach_missed = approach_heading["kind"] == "\u8fdb\u8fd1\u53ca\u590d\u98de"
+                active_kind = "\u8fdb\u8fd1" if split_combined_approach_missed else approach_heading["kind"]
                 active_transition = approach_heading["transition"] or ""
                 # Approach pages can begin with a hold continuation, which is
                 # not attributable to the next approach transition.
@@ -500,6 +502,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 active_kind = heading["kind"] or ""
                 active_transition = ""
                 active_rows = pending_rows
+                split_combined_approach_missed = False
             pending_rows = []
             continue
         rf_legs = list(_DATABASE_RF_LEG.finditer(line))
@@ -524,6 +527,14 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         next_line = lines[line_number + 1] if line_number + 1 < len(lines) else ""
         leg_type = "RF" if rf_leg else leg["leg_type"]
         fix_ident = leg["fix"] or (next_line if _COORDINATE_PAGE_IDENT.fullmatch(next_line) and next_line not in _IGNORED else None)
+        if split_combined_approach_missed and active_rows and leg_type in {"CA", "CF", "DF"}:
+            # CAAC combines these two labelled phases under one title.  The
+            # first course/direct leg after the printed approach rows starts
+            # the following explicitly named missed-approach portion.
+            flush()
+            active_kind = "\u590d\u98de"
+            active_transition = ""
+            split_combined_approach_missed = False
         row = (leg_type, fix_ident, line if leg["fix"] else f"{line} {next_line}".rstrip())
         course, altitude, turn, speed = _database_leg_attributes(lines, line_number, leg_type, fix_ident)
         if rf_leg:
