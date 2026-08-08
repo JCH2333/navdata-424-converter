@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 来源驱动 IAP 航段
+
+- 适用范围：Fenix 2608 NAIP 数据库编码页中的进近过渡、主进近和复飞分段。`ZBAD/R01L` 的源模型保留两个进近过渡 `AD521/AD561`、主进近 `AD620 -> AD606 -> AD603`和复飞段；`ZBAD-5P-1.pdf` 明确标出 `IF/FAF/MAPT`。
+- 解决方式：只对能唯一关联进近图、主进近终点有明确 `MAPT`、且全部固定点能以 CSV/PDF 坐标唯一解析的 IAP 写入。进近过渡使用 `E A/EE B`、主进近使用 `EI/EF/E`、复飞使用 `E M/EE`；由最后一个明确 `MAPT` 坐标生成 `MAP` 行，不读取或复制参考行。多图匹配、缺 MAPT 或缺坐标的 IAP 保留为拒绝记录。
+- 验证：`test_projects_source_backed_iap_leg_with_approach_description` 与全量 `pytest` 均通过（`90 passed`）。候选 `output/candidate-2608-iap` 通过 `integrity_check`，`Terminals` 为 101201/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 839131/845147；IAP 业务键缺口为 589（已从 711 降低），没有参考不存在的新 IAP 键。SHA-256 `c6f6c733c445cb2571aa47c7eaf44e2ffe84f2df4b5716ba690dae66f2c331ec` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。
