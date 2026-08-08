@@ -226,6 +226,14 @@ def test_splits_explicit_combined_approach_and_missed_heading_at_first_missed_le
     ]
 
 
+def test_preserves_whitespace_separated_approach_variant_from_database_heading():
+    evidence = extract_terminal_leg_evidence("RWY01 \u8fdb\u8fd1 z\nIF AA420\nTF AA496\nTF AA495")
+
+    assert [(item.procedure_label, item.procedure_kind, item.leg_type) for item in evidence] == [
+        ("R01-Z", "\u8fdb\u8fd1", "IF"), ("R01-Z", "\u8fdb\u8fd1", "TF"), ("R01-Z", "\u8fdb\u8fd1", "TF"),
+    ]
+
+
 def test_extracts_explicit_database_approach_variants_and_matching_missed_approach():
     evidence = extract_terminal_leg_evidence(
         "RWY30 进近-Z\nTF MZ402\nCF MZ410\nRWY30 复飞-Z\nDF MZ406\n"
