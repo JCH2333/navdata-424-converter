@@ -260,10 +260,10 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
     _load_terminal_coordinate_pages(model, pdf_cache)
     _load_terminal_landing_aids(model)
     _load_terminal_database_charts(model, pdf_cache)
+    _load_terminal_standard_procedure_charts(model, pdf_cache)
     _build_database_procedure_segments(model)
     _retain_database_referenced_terminal_waypoints(model)
     _load_terminal_approach_charts(model, pdf_cache)
-    _load_terminal_standard_procedure_charts(model, pdf_cache)
     _reject_unparsed_charts(model)
     return model
 

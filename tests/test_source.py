@@ -1,7 +1,7 @@
 from navdata_converter.model import ChartFixCoordinate, ChartStandardProcedureRoute, ChartTerminalLeg, Ils, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
 import pytest
 
-from navdata_converter.source import _airport_altitude_feet, _airport_pdf_english_name, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _reject_unparsed_charts, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
+from navdata_converter.source import _airport_altitude_feet, _airport_pdf_english_name, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _reject_unparsed_charts, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, load_naip, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -226,6 +226,18 @@ def test_standard_route_table_replaces_only_a_uniquely_templated_p_arrival(tmp_p
         "进场", "01", ["IF", "TF", "TF"], ["P439", "CZ823", "CZ700"],
     )
     assert not any(segment.label == "PADN-1A" for segment in model.procedure_segments)
+
+
+def test_loads_standard_route_tables_before_database_segments(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr("navdata_converter.source._rows", lambda _: iter(()))
+    monkeypatch.setattr("navdata_converter.source._load_airport_pdf_names", lambda _: None)
+    for name in ("_load_terminal_coordinate_pages", "_load_terminal_landing_aids", "_load_terminal_database_charts", "_load_terminal_standard_procedure_charts", "_build_database_procedure_segments", "_retain_database_referenced_terminal_waypoints", "_load_terminal_approach_charts", "_reject_unparsed_charts"):
+        monkeypatch.setattr("navdata_converter.source." + name, lambda *_, _name=name, **__: calls.append(_name))
+
+    load_naip(tmp_path)
+
+    assert calls.index("_load_terminal_standard_procedure_charts") < calls.index("_build_database_procedure_segments")
 
 
 def test_terminal_approach_charts_are_retained_as_index_evidence(monkeypatch, tmp_path):
