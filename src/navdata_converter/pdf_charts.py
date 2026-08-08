@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartStandardProcedureRoute, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 23
+_EVIDENCE_CACHE_VERSION = 25
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -55,7 +55,7 @@ _DATABASE_NUMERIC_PROCEDURE = re.compile(
 _DATABASE_APPROACH_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1\u53ca\u590d\u98de|\u8fdb\u8fd1|\u590d\u98de)"
     r"(?:\s*-?\s*(?P<variant>[WXYZ]))?"
-    r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5}))?\b", re.IGNORECASE
+    r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5})|\s*VIA\s*(?P<via_transition>[A-Z][A-Z0-9]{0,5}))?\b", re.IGNORECASE
 )
 _DATABASE_LEG = re.compile(r"\b(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
 _DATABASE_RF_LEG = re.compile(r"\bRF\s*\[\s*(?P<center>[A-Z][A-Z0-9]{0,5})\s*,\s*\d+(?:\.\d+)?\s*\]\s*(?P<fix>[A-Z][A-Z0-9]{0,5})?")
@@ -530,7 +530,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 active_runways = (approach_heading["runway"],)
                 split_combined_approach_missed = approach_heading["kind"] == "\u8fdb\u8fd1\u53ca\u590d\u98de"
                 active_kind = "\u8fdb\u8fd1" if split_combined_approach_missed else approach_heading["kind"]
-                active_transition = approach_heading["transition"] or ""
+                active_transition = approach_heading["transition"] or approach_heading["via_transition"] or ""
                 # Approach pages can begin with a hold continuation, which is
                 # not attributable to the next approach transition.
                 active_rows = []

@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 数据库编码进近过渡标题的紧邻 via
+
+- 适用范围：2608 NAIP 终端 PDF 数据库编码表中 `RWYxx 进近过渡via FIX` 的无空格英文连接词版式。`Terminal/ZBDH/ZBDH-4H.pdf` 原生 PDF 文本层和独立 OCR 表格均明确打印 `RWY26 进近过渡via DH504`、`RWY26 进近过渡via DH509`；此前解析器只接受空格分隔的过渡定位点，因此把两段的 `procedure_kind` 留空。
+- 解决方式：`_DATABASE_APPROACH_PROCEDURE` 仅额外接受字面 `via` 后的定位点，保留原有“空格后定位点”形式；不允许任意紧邻大写字符串，以避免把其他标题文本误作过渡名。`test_extracts_database_approach_transition_with_adjacent_via_text` 固定该版式。
+- 验证：全量 CSV/PDF 重解析后，`ZBDH/R26` 源模型包含 `DH504`、`DH509` 两个 `进近过渡` 段，均为 `IF, TF`。未传入参考库生成 `output/candidate-2608-transition-via-narrow`，`integrity_check=ok`，`Terminals 100685/101618`、`TerminalLegs/Ex 839320/845147`，未低于上一稳定候选。只读参考记录显示 `ZBDH/R26` 仍有对应过渡，因此下一缺口是进近图角色关联而非标题 OCR。候选 SHA-256 `d941e91c22f8f62365eed88571d4d32c6d2ecbb7039fd5d99fd968e92654dae4` 不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，仍为不可部署的测试候选。
+
 ## 2026-08-08 标准图导航数据代码投影
 
 - 适用范围：已由标准进场图“程序代号 / 导航数据代码 / 航迹简述”表唯一关联并完成航段模板替换的 STAR。`Terminal/ZBCZ/ZBCZ-4P-1.pdf` 明确打印 `P439-A1 / P439A1 / P439-CZ823-CZ700`；替换后的源段此前仍把无连字符的 `P439A1` 交给普通标签解析器，因而被拒绝。
