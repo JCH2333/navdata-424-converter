@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 数据库编码表同一行航段属性
+
+- 适用范围：2608 NAIP 终端数据库编码 PDF 中，航段类型、定位点、航向、高度、转向和限速打印在同一渲染文本行的版式。`Terminal/ZSWY/ZSWY-4Z01.pdf` 明确打印 `CF WY502 Y 027 1100 RNP1` 与 `DF WY819 2000 MAX333 RNP1`；旧 `_database_leg_attributes` 只扫描后续独立行，因此丢弃这些已打印的属性。
+- 解决方式：属性提取先读取当前航段行，再保留后续独立列作为后备；`CA` 读取航向/高度，`CF` 读取航向及可选高度，`DF/TF` 读取高度，任一位置的 `MAXxxx` 投影为速度限制。`HF/HM` 仍优先采用同一行航向和前置独立高度，避免将航向误作高度。
+- 自动化与候选验证：`test_extracts_inline_database_leg_attributes_from_one_printed_row` 覆盖 `CF/DF/TF`；完整 `pytest` 为 `116 passed`。仅以 CSV/PDF 重解析 `output/model-2608-inline-attrs.pickle` 并生成未传入参考路径的 `output/candidate-2608-inline-attrs`，`integrity_check=ok`。候选中带高度限制的航段从 `511208` 增至 `521553`（参考 `526798`），带限速的扩展行从 `121295` 增至 `127096`（参考 `127894`）；相对上一候选改变 `11817` 条航段字段和 `5801` 条限速字段。候选 SHA-256 `9c17ca30492bf7971c92aae77993ef7f99cdbfcf0c7f09208b5f171180b4776b` 仍不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，不可部署或发布。
+
 ## 2026-08-08 带导航性能前缀的进近过渡标题
 
 - 适用范围：2608 NAIP 终端数据库编码页在 `RWYxx` 与进近标题之间印有 `RNP ILS` 或 `AR x/y/z` 的版式，以及明确印为 `RWYxx 过渡FIX` 的进近图过渡。`ZUAL-4Z03.pdf` 明确打印 `RWY15 RNP ILS 进近过渡 IS96A`，`ZYTL-4Z15.pdf` 打印 `RWY10 AR z y进近过渡 TL106`，`ZYMH-4H.pdf` 打印 `RWY15 过渡MH503`。旧通用程序标题会把这些文字重排为无类型的 `IS-96A`、`TL1-06` 或 `MH5-03`。
