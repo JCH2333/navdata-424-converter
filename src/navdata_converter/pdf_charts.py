@@ -811,8 +811,18 @@ def _is_standard_procedure_index_row(row: dict[str, str]) -> bool:
     return "\u6807\u51c6\u4eea\u8868\u79bb\u573a\u56fe" in chart_type or "\u6807\u51c6\u4eea\u8868\u8fdb\u573a\u56fe" in chart_type
 
 
-def extract_airport_standard_procedure_charts(airport_directory: Path, cache_dir: Path | None = None) -> list[ProcedureChart]:
-    """Extract index-declared SID/STAR pages as route-label evidence."""
+def extract_airport_standard_procedure_charts(
+    airport_directory: Path,
+    cache_dir: Path | None = None,
+    *,
+    include_vector_evidence: bool = False,
+) -> list[ProcedureChart]:
+    """Extract index-declared SID/STAR pages as route-label evidence.
+
+    Vector drawings are deliberately opt-in.  A full NAIP run contains many
+    thousands of standard plates, and decoding every page's drawing stream is
+    a targeted diagnostic rather than a prerequisite for CSV/PDF conversion.
+    """
     index = airport_directory / "Charts.csv"
     if not index.is_file():
         raise FileNotFoundError(f"missing chart index: {index}")
@@ -825,12 +835,15 @@ def extract_airport_standard_procedure_charts(airport_directory: Path, cache_dir
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            charts.extend(_cached_extract(
-                pdf, airport, "standard-terminal-procedure", chart_name, cache_dir,
-                lambda path, code, kind, name: extract_approach_chart(
-                    path, code, kind, name, include_vector_evidence=True,
-                ),
-            ))
+            if include_vector_evidence:
+                charts.extend(_cached_extract(
+                    pdf, airport, "standard-terminal-procedure", chart_name, cache_dir,
+                    lambda path, code, kind, name: extract_approach_chart(
+                        path, code, kind, name, include_vector_evidence=True,
+                    ),
+                ))
+            else:
+                charts.extend(_cached_extract(pdf, airport, "standard-terminal-procedure", chart_name, cache_dir, extract_approach_chart))
     return charts
 
 

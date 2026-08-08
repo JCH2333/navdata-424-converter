@@ -500,6 +500,13 @@ def test_standard_procedure_chart_selection_uses_sid_and_star_index_types(monkey
 
     assert extract_airport_standard_procedure_charts(airport) == []
     assert calls == [
+        ("ZYYK-3A.pdf", "standard-terminal-procedure", "SID RWY04", False),
+        ("ZYYK-4A.pdf", "standard-terminal-procedure", "STAR RWY22", False),
+    ]
+
+    calls.clear()
+    assert extract_airport_standard_procedure_charts(airport, include_vector_evidence=True) == []
+    assert calls == [
         ("ZYYK-3A.pdf", "standard-terminal-procedure", "SID RWY04", True),
         ("ZYYK-4A.pdf", "standard-terminal-procedure", "STAR RWY22", True),
     ]
