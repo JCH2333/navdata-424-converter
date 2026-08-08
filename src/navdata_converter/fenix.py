@@ -110,6 +110,11 @@ def _constraint_altitude(meters: float | None) -> str | None:
     return f"{round(meters * 3.28084 / 100) * 100:.0f}A"
 
 
+def airport_speed_limit_altitude(transition_level: int) -> int:
+    """Project the Fenix 250-knot ceiling from the source transition level."""
+    return max(10000, transition_level - 1800)
+
+
 def project_database_terminal_leg(
     leg: ChartTerminalLeg,
     procedure_type: str,
@@ -904,7 +909,8 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
         airport_ids[airport.key] = airport_id
         name = airport.name if airport.name.isascii() else romanize_name(airport.name.replace("/", " "))
         connection.execute("INSERT INTO Airports VALUES (?,?,?,?,?,?,?,?,?,?,?)", (airport_id, name, airport.icao, None,
-            airport.latitude, airport.longitude, airport.elevation_ft, airport.transition_altitude, airport.transition_level, 250, 10000))
+            airport.latitude, airport.longitude, airport.elevation_ft, airport.transition_altitude, airport.transition_level,
+            250, airport_speed_limit_altitude(airport.transition_level)))
         connection.execute("INSERT INTO AirportLookup VALUES (?,?)", (airport.icao, airport_id))
         inserted_airports.add(airport.key)
     next_runway = _next_id(connection, "Runways")

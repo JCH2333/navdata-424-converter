@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_chart_roles, _iap_sections, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _terminal_waypoint_resolutions, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_chart_roles, _iap_sections, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _terminal_waypoint_resolutions, airport_speed_limit_altitude, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
 from navdata_converter.model import Airport, ChartRouteFix, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureChart, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -93,6 +93,11 @@ def test_fenix_navaid_frequency_uses_observed_bcd_contract():
     assert encode_frequency(111.55, "VOR") == 0x01115500
     assert encode_frequency(108.950, "VOR") == 0x01089500
     assert encode_frequency(495, "NDB") == 0x04950000
+
+
+def test_projects_airport_speed_limit_altitude_from_transition_level_with_floor():
+    assert airport_speed_limit_altitude(15700) == 13900
+    assert airport_speed_limit_altitude(8900) == 10000
 
 
 def test_projects_complete_ad219_ils_using_observed_fenix_units():

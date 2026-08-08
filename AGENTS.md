@@ -36,6 +36,12 @@
 - 解决方式：仅在非图表机场资料 PDF 的前两页中，解析出唯一匹配本机场 ICAO 的拉丁名称片段；以空格规范斜线和大小写，并把 PDF 页码和 SHA-256 记录为 `Airport.name_source`。多候选、冲突或没有英文名时继续使用 CSV 名称和确定性拼音。`test_extracts_english_airport_name_printed_after_ad21_chinese_name` 与歧义拒绝 fixture 覆盖该规则。
 - 验证：完整重新解析得到 271/275 条唯一 PDF 英文名证据。候选 `output/candidate-2608-airport-pdf-names` 的机场 `Name` 差异由 81 降至 72；`Latitude`、`Longtitude`、`Elevation`、`TransitionAltitude`、`TransitionLevel`、`SpeedLimit` 均保持零差异，`SpeedLimitAltitude` 仍有 44 条差异。`integrity_check=ok`，表计数为 `Airports 17346/17346`、`Terminals 101540/101618`、`TerminalLegs 843478/845147`；候选 SHA-256 `0bd011543f2176475fd51a3cc093495e0450a5b14342018b293b1d8cc463a07b` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 机场限速高度
+
+- 适用范围：新增中国机场的 Fenix `Airports.SpeedLimitAltitude`。来源 CSV 已提供 `VAL_TRANSITION_LEVEL`，经现有投影后为整数百英尺。
+- 解决方式：限速高度为 `max(10000, TransitionLevel - 1800)` 英尺；只依赖机场 CSV 已投影的过渡层，不读取参考字段。对 188 个实际新增机场的只读验证中，该公式全部命中；低过渡层机场由 10,000 英尺下限处理。`test_projects_airport_speed_limit_altitude_from_transition_level_with_floor` 覆盖正常与下限两种情况。
+- 验证：候选 `output/candidate-2608-speed-limit-altitude` 的 `SpeedLimitAltitude` 差异由 44 降至 0；`Latitude`、`Longtitude`、`Elevation`、`TransitionAltitude`、`TransitionLevel` 和 `SpeedLimit` 仍为零差异，机场名称差异为 72。`integrity_check=ok`，表计数为 `Airports 17346/17346`、`Terminals 101540/101618`、`TerminalLegs 843478/845147`；候选 SHA-256 `37c8e836fe9d690a877e283bfe3ed5a645ed489ebe88058f681cf613d94a6cda` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。
