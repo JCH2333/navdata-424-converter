@@ -464,6 +464,7 @@ def extract_vector_route_fixes(words: list[tuple[float, float, float, float, str
 
 def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_ident: str | None) -> tuple[float | None, float | None, str | None, int | None]:
     """Read observable numeric fields from one database-coding table row."""
+    inline_values = lines[start].replace(",", " ").split()
     values: list[str] = []
     for line in lines[start + 1:]:
         if _DATABASE_LEG.search(line) or _DATABASE_PROCEDURE.search(line):
@@ -472,9 +473,11 @@ def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_id
             values.append(line)
     if fix_ident and values[:1] == [fix_ident]:
         values.pop(0)
-    turn_direction = next((value for value in values if value in {"L", "R"}), None)
-    speed = next((int(match["speed"]) for value in values if (match := _DATABASE_SPEED.fullmatch(value))), None)
-    numeric = [float(value) for value in values if value.isdecimal()]
+    all_values = [*inline_values, *values]
+    turn_direction = next((value for value in all_values if value in {"L", "R"}), None)
+    speed = next((int(match["speed"]) for value in all_values if (match := _DATABASE_SPEED.fullmatch(value))), None)
+    following_numeric = [float(value) for value in values if value.isdecimal()]
+    numeric = [float(value) for value in all_values if value.isdecimal()]
     course = None
     altitude = None
     if leg_type == "CA" and numeric:
@@ -482,15 +485,15 @@ def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_id
         altitude = numeric[1] if len(numeric) > 1 else None
     elif leg_type == "CF" and numeric:
         course = numeric[0]
-    elif leg_type == "DF" and numeric:
+        altitude = numeric[1] if len(numeric) > 1 else None
+    elif leg_type in {"DF", "TF"} and numeric:
         altitude = numeric[0]
     elif leg_type in {"HF", "HM"}:
-        inline_values = lines[start].replace(",", " ").split()
         inline_turn = next((value for value in inline_values if value in {"L", "R"}), None)
         inline_speed_match = re.search(r"\bMAX(\d{2,3})\b", lines[start], re.IGNORECASE)
         inline_numeric = [float(value) for value in inline_values if value.isdecimal()]
         course = inline_numeric[0] if inline_numeric else None
-        altitude = inline_numeric[1] if len(inline_numeric) > 1 else (numeric[0] if numeric else None)
+        altitude = inline_numeric[1] if len(inline_numeric) > 1 else (following_numeric[0] if following_numeric else None)
         # Some holding-table altitude cells have a baseline a few points above
         # their leg cell, so position sorting emits the value just before HF/HM.
         if altitude is None and start and lines[start - 1].isdecimal():

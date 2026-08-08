@@ -179,6 +179,18 @@ def test_extracts_database_leg_course_altitude_turn_and_speed_columns():
     ]
 
 
+def test_extracts_inline_database_leg_attributes_from_one_printed_row():
+    evidence = extract_terminal_leg_evidence(
+        "RWY03 离场 BZ-51N\nCF WY502 Y 027 1100 RNP1\nDF WY819 2000 MAX333 RNP1\nTF WY814 2900 RNP1"
+    )
+
+    assert [(item.leg_type, item.course_degrees, item.altitude_meters, item.turn_direction, item.speed_limit_knots) for item in evidence] == [
+        ("CF", 27.0, 1100.0, None, None),
+        ("DF", None, 2000.0, None, 333),
+        ("TF", None, 2900.0, None, None),
+    ]
+
+
 def test_extracts_fix_from_next_line_when_pdf_table_columns_are_separate():
     evidence = extract_terminal_leg_evidence("CF\nYK551\nRWY04 离场 P389-09D\nDF\nYK404\nTF\nP389")
 
