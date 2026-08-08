@@ -181,8 +181,9 @@ def test_normalizes_dashless_database_procedure_label_from_printed_heading():
 
     assert [(item.procedure_label, item.runway, item.procedure_kind, item.leg_type, item.fix_ident) for item in evidence] == [
         ("IDKE-5Y", "36L", "\u79bb\u573a", "CA", None),
-        ("IDKE-5Y", "36L", "\u79bb\u573a", "DF", "AA111"),
-        ("IDKE-5Y", "36L", "\u79bb\u573a", "TF", "AA112"),
+        ("IDKE-5Y", "36L", "\u79bb\u573a", "DF", "AA111"), ("IDKE-5Y", "36L", "\u79bb\u573a", "TF", "AA112"),
+        ("IDKE-5Y", "36R", "\u79bb\u573a", "CA", None), ("IDKE-5Y", "36R", "\u79bb\u573a", "DF", "AA111"),
+        ("IDKE-5Y", "36R", "\u79bb\u573a", "TF", "AA112"),
     ]
 
 
@@ -192,6 +193,12 @@ def test_extracts_direction_from_shared_runway_database_heading():
     assert [(item.procedure_label, item.runway, item.procedure_kind, item.leg_type, item.fix_ident) for item in evidence] == [
         ("BOTPU-2W", "16L", "\u79bb\u573a", "CF", "TJ931"),
         ("BOTPU-2W", "16L", "\u79bb\u573a", "TF", "TJ932"),
+        ("BOTPU-2W", "16R", "\u79bb\u573a", "CF", "TJ931"),
+        ("BOTPU-2W", "16R", "\u79bb\u573a", "TF", "TJ932"),
+        ("BOTPU-2W", "34L", "\u79bb\u573a", "CF", "TJ931"),
+        ("BOTPU-2W", "34L", "\u79bb\u573a", "TF", "TJ932"),
+        ("BOTPU-2W", "34R", "\u79bb\u573a", "CF", "TJ931"),
+        ("BOTPU-2W", "34R", "\u79bb\u573a", "TF", "TJ932"),
     ]
 
 

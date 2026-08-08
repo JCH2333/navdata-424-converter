@@ -290,6 +290,36 @@ def test_inserts_fully_resolved_source_sid_with_paired_extension_legs(tmp_path):
     assert rejected == [{"airport": "ZYYK", "label": "CC-09D", "reason": "terminal fix ZYYK/W has no source coordinate evidence", "source": source.__dict__}]
 
 
+def test_merges_explicit_multi_runway_database_heading_into_shared_terminal(tmp_path):
+    connection = sqlite3.connect(tmp_path / "shared-runway.db3")
+    connection.executescript("""
+        CREATE TABLE Airports (ID INTEGER PRIMARY KEY, ICAO TEXT);
+        CREATE TABLE Runways (ID INTEGER, AirportID INTEGER, Ident TEXT);
+        CREATE TABLE Waypoints (ID INTEGER PRIMARY KEY, Ident TEXT, Latitude REAL, Longtitude REAL);
+        CREATE TABLE Terminals (ID INTEGER PRIMARY KEY, AirportID INTEGER, Proc TEXT, ICAO TEXT, FullName TEXT, Name TEXT, Rwy TEXT, RwyID INTEGER, IlsID INTEGER);
+        CREATE TABLE TerminalLegs (ID INTEGER, TerminalID INTEGER, Type TEXT, Transition TEXT, TrackCode TEXT, WptID INTEGER, WptLat REAL, WptLon REAL, TurnDir TEXT, NavID INTEGER, NavLat REAL, NavLon REAL, NavBear REAL, NavDist REAL, Course REAL, Distance REAL, Alt TEXT, Vnav REAL, CenterID INTEGER, CenterLat REAL, CenterLon REAL, WptDescCode TEXT);
+        CREATE TABLE TerminalLegsEx (ID INTEGER, IsFlyOver INTEGER, SpeedLimit REAL, SpeedLimitDescription TEXT);
+        INSERT INTO Airports VALUES (10, 'ZYYY');
+        INSERT INTO Runways VALUES (20, 10, '01'), (21, 10, '19');
+        INSERT INTO Waypoints VALUES (30, 'FIX01', 40.0, 120.0), (31, 'FIX19', 41.0, 121.0);
+    """)
+    source = SourceRef("Terminal/ZYYY/ZYYY-0C-01.pdf", 1, 1, "hash")
+    model = NavModel(tmp_path, terminal_waypoints=[
+        TerminalWaypoint("one", "ZYYY", "FIX01", 40.0, 120.0, source),
+        TerminalWaypoint("two", "ZYYY", "FIX19", 41.0, 121.0, source),
+    ], procedure_segments=[
+        ProcedureSegment("ZYYY", "ABCD-1D", "\u79bb\u573a", "01", "", (ChartTerminalLeg("ABCD-1D", "01", "TF", "FIX01", "TF FIX01", "\u79bb\u573a"),), source),
+        ProcedureSegment("ZYYY", "ABCD-1D", "\u79bb\u573a", "19", "", (ChartTerminalLeg("ABCD-1D", "19", "TF", "FIX19", "TF FIX19", "\u79bb\u573a"),), source),
+    ])
+
+    counts = _insert_terminal_procedures(connection, model)
+
+    assert counts["terminal_procedures_inserted"] == 1
+    assert counts["terminal_legs_inserted"] == 2
+    assert connection.execute("SELECT Proc, Name, Rwy, RwyID FROM Terminals").fetchall() == [("2", "ABCD1D", None, None)]
+    assert connection.execute("SELECT TerminalID, Transition, WptID FROM TerminalLegs ORDER BY ID").fetchall() == [(1, "RW01", 30), (1, "RW19", 31)]
+
+
 def test_defers_holding_leg_without_blocking_evidenced_terminal_legs(tmp_path):
     connection = sqlite3.connect(tmp_path / "holding.db3")
     connection.executescript("""

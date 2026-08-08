@@ -48,6 +48,12 @@
 - 解决方式：`fenix_procedure_name` 保留四字符普通基名，仅截断长度大于四的普通基名，并先执行 `P### -> P##` 规则。`AVBO-8Y -> AVBO8Y` 与既有 `KAKAT-9ZA -> KAK9ZA` 回归测试共同固定边界；统计仅用于验证规则，不读取或复制参考记录。
 - 验证：使用完整 CSV/PDF 来源模型生成 `output/candidate-2608-procedure-four-char-base`，转换未传入参考库。候选 `integrity_check=ok`；`Terminals 101147/101618`、`TerminalLegs/Ex 841232/845147`。终端业务键差异由缺失 1,895、额外 1,840 降为缺失 1,286、额外 838，其中 STAR 为 `500/509`、SID 为 `535/328`、IAP 保持 `251/1`。候选 SHA-256 `ac24e80c6d3f605c7b48e10e98804dff90612557688f1b97102e182b66d2dceb` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 多跑道数据库编码标题
+
+- 适用范围：2608 NAIP 终端 PDF 数据库编码表中 `RWY18L/19`、`RWY01/36L/36R` 这类同一标题列出的共享跑道。原解析器只保留首条跑道，例如 `ZBAA-0C-19.pdf` 原生文字层明确打印 `RWY18L/19 进场AVBO4A`，却只生成 `18L` 段。
+- 解决方式：提取每条标题中显式打印的跑道并为每条创建来源段；当同一机场、SID/STAR 类型和规范化标签由来源明确关联到多条跑道时，适配器写入一个 `Rwy=NULL` 的共享终端，同时保留每条来源段自己的 `RWxx` 过渡。单跑道程序继续保留其跑道键。`test_normalizes_dashless_database_procedure_label_from_printed_heading`、`test_extracts_direction_from_shared_runway_database_heading` 和 `test_merges_explicit_multi_runway_database_heading_into_shared_terminal` 覆盖提取、共享与单腿过渡。
+- 验证：重新解析完整 CSV/PDF（证据缓存版本 19）得到 9,520 个程序段，并生成未传入参考库的 `output/candidate-2608-multi-runway-heading`。`integrity_check=ok`；`Terminals 100557/101618`、`TerminalLegs/Ex 838900/845147`。终端业务键差异为缺失 1,203、额外 165，其中 STAR `452/96`、SID `500/68`、IAP `251/1`。候选 SHA-256 `17f62988e52dc566d3c51e7468d92aaa6b5da218d157f88660afbf93b00b5c4c` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。

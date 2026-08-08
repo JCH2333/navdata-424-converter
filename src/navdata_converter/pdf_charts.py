@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 18
+_EVIDENCE_CACHE_VERSION = 19
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -184,6 +184,11 @@ def _extract_runways(text: str) -> tuple[str, ...]:
     for match in _SHARED_RUNWAYS.finditer(text):
         runways.update(re.findall(r"\d{2}[LRC]?", match.group(0)))
     return tuple(sorted(runways))
+
+
+def _database_heading_runways(heading: str) -> tuple[str, ...]:
+    """Keep every runway explicitly printed in one database-table heading."""
+    return tuple(dict.fromkeys(re.findall(r"(?:\bRWY\s*|/)\s*(\d{2}[LRC]?)\b", heading)))
 
 
 def approach_procedure_name_candidates(chart_name: str, runways: tuple[str, ...], airport: str = "") -> tuple[str, ...]:
@@ -460,7 +465,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     """
     result: list[ChartTerminalLeg] = []
     active_label = ""
-    active_runway = ""
+    active_runways: tuple[str, ...] = ()
     active_kind = ""
     active_transition = ""
     split_combined_approach_missed = False
@@ -472,7 +477,8 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
         if not active_label:
             return
         result.extend(
-            ChartTerminalLeg(active_label, active_runway, leg_type, fix_ident, raw, active_kind, course, altitude, turn, speed, active_transition, center_ident)
+            ChartTerminalLeg(active_label, runway, leg_type, fix_ident, raw, active_kind, course, altitude, turn, speed, active_transition, center_ident)
+            for runway in active_runways
             for leg_type, fix_ident, raw, course, altitude, turn, speed, center_ident in active_rows
         )
         active_rows = []
@@ -486,7 +492,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
             if approach_heading:
                 variant = (approach_heading["variant"] or "").upper()
                 active_label = f"R{approach_heading['runway']}{f'-{variant}' if variant else ''}"
-                active_runway = approach_heading["runway"]
+                active_runways = (approach_heading["runway"],)
                 split_combined_approach_missed = approach_heading["kind"] == "\u8fdb\u8fd1\u53ca\u590d\u98de"
                 active_kind = "\u8fdb\u8fd1" if split_combined_approach_missed else approach_heading["kind"]
                 active_transition = approach_heading["transition"] or ""
@@ -498,7 +504,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 # while others use IDKE-5Y.  Both expose the same base and
                 # suffix columns, so normalize the observable typography here.
                 active_label = f"{heading['label_base']}-{heading['label_suffix']}"
-                active_runway = heading["runway"]
+                active_runways = _database_heading_runways(heading.group(0))
                 active_kind = heading["kind"] or ""
                 active_transition = ""
                 active_rows = pending_rows

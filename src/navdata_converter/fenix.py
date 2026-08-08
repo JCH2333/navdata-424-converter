@@ -541,10 +541,23 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
         (airport_id, ident): runway_id
         for runway_id, airport_id, ident in connection.execute("SELECT ID, AirportID, Ident FROM Runways")
     }
-    existing = {
-        (str(icao), str(proc), str(name), str(runway or ""))
-        for icao, proc, name, runway in connection.execute("SELECT ICAO, Proc, Name, Rwy FROM Terminals")
+    terminal_ids = {
+        (str(icao), str(proc), str(name), str(runway or "")): int(terminal_id)
+        for terminal_id, icao, proc, name, runway in connection.execute("SELECT ID, ICAO, Proc, Name, Rwy FROM Terminals")
     }
+    existing = set(terminal_ids)
+    source_runways: dict[tuple[str, str, str], set[str]] = {}
+    for segment in model.procedure_segments:
+        try:
+            procedure_type, name, runway = fenix_terminal_identity(segment)
+        except ValueError:
+            continue
+        if procedure_type != "3":
+            source_runways.setdefault((segment.airport, procedure_type, name), set()).add(runway)
+    shared_runway_identities = {
+        identity for identity, runways in source_runways.items() if len(runways) > 1
+    }
+    inserted_shared_identities: set[tuple[str, str, str, str]] = set()
     inserted_terminals = 0
     inserted_legs = 0
     rejected: list[dict[str, object]] = []
@@ -558,12 +571,13 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
             continue
         if procedure_type == "3":
             continue
-        identity = (segment.airport, procedure_type, name, runway)
-        if identity in existing:
+        shared_runways = (segment.airport, procedure_type, name) in shared_runway_identities
+        identity = (segment.airport, procedure_type, name, "" if shared_runways else runway)
+        if identity in existing and (not shared_runways or identity not in inserted_shared_identities):
             continue
         airport_id = airport_ids.get(segment.airport)
-        runway_id = runway_ids.get((airport_id, runway)) if airport_id is not None else None
-        if airport_id is None or runway_id is None:
+        source_runway_id = runway_ids.get((airport_id, runway)) if airport_id is not None else None
+        if airport_id is None or source_runway_id is None:
             rejected.append({"airport": segment.airport, "label": segment.label, "reason": "missing target airport or runway", "source": asdict(segment.source)})
             continue
         transition = f"RW{runway}"
@@ -599,10 +613,20 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
         except (ConversionBlocked, ValueError) as error:
             rejected.append({"airport": segment.airport, "label": segment.label, "reason": str(error), "source": asdict(segment.source)})
             continue
-        connection.execute(
-            "INSERT INTO Terminals VALUES (?,?,?,?,?,?,?,?,?)",
-            (next_terminal_id, airport_id, procedure_type, segment.airport, name, name, runway, runway_id, 0),
-        )
+        if identity not in existing:
+            terminal_id = next_terminal_id
+            connection.execute(
+                "INSERT INTO Terminals VALUES (?,?,?,?,?,?,?,?,?)",
+                (terminal_id, airport_id, procedure_type, segment.airport, name, name, None if shared_runways else runway, None if shared_runways else source_runway_id, 0),
+            )
+            existing.add(identity)
+            terminal_ids[identity] = terminal_id
+            if shared_runways:
+                inserted_shared_identities.add(identity)
+            next_terminal_id += 1
+            inserted_terminals += 1
+        else:
+            terminal_id = terminal_ids[identity]
         for projection in projections:
             connection.execute(
                 "INSERT INTO TerminalLegsEx VALUES (?,?,?,?)",
@@ -611,7 +635,7 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
             connection.execute(
                 "INSERT INTO TerminalLegs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
-                    next_leg_id, next_terminal_id, projection.type_code, projection.transition, projection.track_code,
+                    next_leg_id, terminal_id, projection.type_code, projection.transition, projection.track_code,
                     projection.waypoint_id, projection.waypoint_latitude, projection.waypoint_longitude,
                     projection.turn_direction, None, None, None, None, None, projection.course, None,
                     projection.altitude, None, projection.center_id, projection.center_latitude, projection.center_longitude, projection.waypoint_description,
@@ -619,9 +643,6 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
             )
             next_leg_id += 1
             inserted_legs += 1
-        existing.add(identity)
-        next_terminal_id += 1
-        inserted_terminals += 1
     return {
         "terminal_procedures_inserted": inserted_terminals,
         "terminal_legs_inserted": inserted_legs,
