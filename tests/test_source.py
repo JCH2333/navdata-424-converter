@@ -59,6 +59,12 @@ def test_extracts_english_airport_name_printed_after_ad21_chinese_name():
     assert _airport_pdf_english_name(text, "ZBAL") == "ALXA LEFT BANNER BAYANHOT"
 
 
+def test_collapses_exact_repeated_english_airport_title_fragment():
+    text = "ZSAQ/AQG-安庆ANQING/Anqing\n"
+
+    assert _airport_pdf_english_name(text, "ZSAQ") == "ANQING"
+
+
 def test_rejects_ambiguous_or_nonmatching_ad21_airport_name_evidence():
     text = "ZBAL/AXF-阿拉善ALXA LEFT\nZBAL/AXF-阿拉善ALXA RIGHT\n"
 

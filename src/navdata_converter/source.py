@@ -116,6 +116,13 @@ def _airport_pdf_english_name(text: str, icao: str) -> str | None:
         if tail is None:
             continue
         normalized = " ".join(re.findall(r"[A-Za-z0-9]+", tail["english"])).upper()
+        words = normalized.split()
+        # AD 2.1 headings can print the same bilingual airport name twice,
+        # once in all caps and once in title case (for example ANQING/Anqing).
+        # Collapse only an exact adjacent repetition; distinct slash-separated
+        # place names such as ALXA LEFT BANNER/Bayanhot remain intact.
+        if len(words) % 2 == 0 and words[:len(words) // 2] == words[len(words) // 2:]:
+            normalized = " ".join(words[:len(words) // 2])
         if normalized:
             values.add(normalized)
     return next(iter(values)) if len(values) == 1 else None
