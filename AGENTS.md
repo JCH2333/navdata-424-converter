@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 旧图表缓存的压缩航段回填
+
+- 适用范围：由旧版数据库编码解析器序列化的本地 PDF 证据缓存。缓存负载已保留来源 `raw` 行、程序标签、跑道和页级 `SourceRef`，但可能包含未按当前规则拆开的 `CA ... DF ...` 行；仅提升缓存版本不足以修复已经被错误写入同版本键的本地诊断缓存。
+- 解决方式：`_chart_from_payload` 只对一条缓存原始行中可见两个或更多数据库航段标记的记录重新切分，并沿用已有程序、跑道和来源元数据；普通缓存行原样保留。`test_rehydrates_legacy_cached_compressed_database_leg_with_current_boundaries` 覆盖 `CA/DF` 的独立高度、转向和限速，未读取参考库。
+- 验证：完整 `pytest` 为 `119 passed`。从版本 30 的 CSV/PDF 证据缓存重建 `output/model-2608-cache-rehydrated.pickle`，`ZBAL/TUNV-9W/32` 确认恢复独立 `DF AL507 R 3000 MAX230`；转换未传入参考路径。`output/candidate-2608-cache-rehydrated` 的 `integrity_check=ok`，终端航段从 `840885` 增至 `841247`（参考 `845147`），高度非空从 `524051` 增至 `524246`，限速行从 `127086` 增至 `127318`。新增归一签名 21 条，其中 1 条与参考一致；其余保持来源驱动，不按参考删改。候选 SHA-256 `e0ec6bf3b4e078fa91669d487b1779ddb18286ae7d3cb12e7a34550e7a181a70` 不等于参考，禁止部署或发布。
+
 ## 2026-08-08 数据库编码 IF 与 RF 的来源高度
 
 - 适用范围：2608 NAIP 终端数据库编码 PDF 中，IF 或 RF 行在定位点之后打印高度。示例原始行包括 `IF AA173 2400 RNAV1` 与 `RF[AR081, 3.1] AR045 L 2600 RNP1`。旧解析器仅为 CA/CF/DF/TF/HF/HM 读取高度，遗漏 IF 和 RF。
