@@ -358,6 +358,27 @@ def test_rebuilds_interleaved_database_rf_table_row_from_word_positions():
     ]
 
 
+def test_rebuilds_database_heading_when_left_margin_text_has_a_shifted_baseline():
+    words = [
+        (5.5, 252.26, 14.5, 271.26, "\u51b5", 42, 0, 0),
+        (172.83, 253.70, 198.16, 261.26, "RWY22", 42, 1, 0),
+        (198.57, 254.80, 210.50, 260.47, "\u8fdb\u8fd1", 42, 2, 0),
+        (212.22, 254.80, 227.23, 260.47, "\u8fc7\u6e21", 42, 3, 0),
+        (227.59, 253.70, 248.33, 261.26, "SH705", 42, 4, 0),
+    ]
+
+    text = _positioned_database_text(words)
+
+    assert "RWY22 \u8fdb\u8fd1 \u8fc7\u6e21 SH705" in text
+    evidence = extract_terminal_leg_evidence(text + "\nIF SH705\nTF SH703\nRWY22 \u8fdb\u8fd1\u3001\u590d\u98de\nIF SH703\nCF SH704")
+    assert [(item.procedure_label, item.procedure_kind, item.transition, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("R22", "\u8fdb\u8fd1\u8fc7\u6e21", "SH705", "IF", "SH705"),
+        ("R22", "\u8fdb\u8fd1\u8fc7\u6e21", "SH705", "TF", "SH703"),
+        ("R22", "\u8fdb\u8fd1", "", "IF", "SH703"),
+        ("R22", "\u590d\u98de", "", "CF", "SH704"),
+    ]
+
+
 def test_extracts_inline_holding_course_altitude_turn_and_speed():
     evidence = extract_terminal_leg_evidence("RWY03 进场 KAKAT-9ZA\nHM CF402 Y 097 L 2122 MAX205")
 

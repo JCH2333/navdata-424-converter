@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartStandardProcedureRoute, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 26
+_EVIDENCE_CACHE_VERSION = 27
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -53,7 +53,7 @@ _DATABASE_NUMERIC_PROCEDURE = re.compile(
     r"(?P<label_base>[A-Z][A-Z0-9]{0,5}?)(?P<label_suffix>\d{2})(?:\b|\()"
 )
 _DATABASE_APPROACH_PROCEDURE = re.compile(
-    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1\u53ca\u590d\u98de|\u8fdb\u8fd1|\u590d\u98de)"
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\s*\u8fc7\u6e21|\u8fdb\u8fd1(?:\u53ca|\u3001)\s*\u590d\u98de|\u8fdb\u8fd1|\u590d\u98de)"
     r"(?:\s*-?\s*(?P<variant>[WXYZ]))?"
     r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5})|\s*VIA\s*(?P<via_transition>[A-Z][A-Z0-9]{0,5}))?\b", re.IGNORECASE
 )
@@ -328,7 +328,7 @@ def _positioned_database_text(words: list[tuple[float, float, float, float, str,
         text = raw_text.strip()
         if not text:
             continue
-        if rows and abs(rows[-1][0][1] - y0) <= 2.5:
+        if rows and min(abs(existing_y - y0) for _, existing_y, _ in rows[-1]) <= 2.5:
             rows[-1].append((x0, y0, text))
         else:
             rows.append([(x0, y0, text)])
@@ -534,8 +534,9 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 active_label = f"R{approach_heading['runway']}{f'-{variant}' if variant else ''}"
                 active_runways = (approach_heading["runway"],)
                 kind = approach_heading.groupdict().get("kind") or "\u8fdb\u8fd1\u8fc7\u6e21"
-                split_combined_approach_missed = kind == "\u8fdb\u8fd1\u53ca\u590d\u98de"
-                active_kind = "\u8fdb\u8fd1" if split_combined_approach_missed else kind
+                normalized_kind = re.sub(r"\s+", "", kind)
+                split_combined_approach_missed = normalized_kind in {"\u8fdb\u8fd1\u53ca\u590d\u98de", "\u8fdb\u8fd1\u3001\u590d\u98de"}
+                active_kind = "\u8fdb\u8fd1" if split_combined_approach_missed else normalized_kind
                 active_transition = (
                     approach_heading.groupdict().get("transition")
                     or approach_heading.groupdict().get("via_transition")
