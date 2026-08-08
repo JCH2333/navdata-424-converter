@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 五字符程序基名的两字符版本投影
+
+- 适用范围：2608 NAIP 终端 PDF 数据库编码表中的五字符普通基名、两字符版本号。`Terminal/ZBTJ/ZBTJ-4Z01.pdf` 原生文字层与离线 OCR 均明确打印 `BOTPU-2W`；同类来源标签包括 `AVBOX-1W`、`BUMDU-3H`、`DUMAP-1Q` 与 `GUVBA-1W`。
+- 解决方式：Fenix 六字符名称字段对该类标签保留基名前三位及末位，然后拼接两字符版本号，即 `BOTPU-2W -> BOTU2W`、`AVBOX-1W -> AVBX1W`、`BUMDU-3H -> BUMU3H`、`DUMAP-1Q -> DUMP1Q`、`GUVBA-1W -> GUVA1W`。`P### -> P##` 的独立规则保持优先。该投影只读取 PDF 标签，不读取或复制参考记录。
+- 验证：`test_fenix_procedure_name_matches_observed_database_labels` 与全量 `pytest`（`101 passed`）通过。完整 CSV/PDF 重解析并以不传入参考库的转换生成 `output/candidate-2608-five-char-procedure-rerun`；`integrity_check=ok`，`Terminals 100685/101618`、`TerminalLegs/Ex 839333/845147`。随后以只读参考进行业务键差分：缺失/额外由 `1086/116` 降至 `1013/103`，其中 STAR `368/64`、SID `394/38`、IAP `251/1`。候选 SHA-256 `7027a5c8f965083587bc65047577908f2d0169942d3118b73f2cd2437a433e7a` 不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，仍禁止部署或发布。
+
 ## 2026-08-08 来源驱动 IAP 航段
 
 - 适用范围：Fenix 2608 NAIP 数据库编码页中的进近过渡、主进近和复飞分段。`ZBAD/R01L` 的源模型保留两个进近过渡 `AD521/AD561`、主进近 `AD620 -> AD606 -> AD603`和复飞段；`ZBAD-5P-1.pdf` 明确标出 `IF/FAF/MAPT`。
