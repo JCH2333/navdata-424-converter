@@ -30,6 +30,12 @@
 - 解决方式：仍先以名称和跑道筛选；多图候选时，只有当前主进近最后固定点在其中唯一一张图的原生 `MAPT` 标注中出现，才选择该图。零张或多张 `MAPT` 命中继续拒绝。`test_iap_chart_roles_selects_unique_chart_with_explicit_final_mapt` 固化该规则；不读取或复制参考记录。
 - 验证：候选 `output/candidate-2608-mapt-chart-disambiguation` 通过 `integrity_check`，`Terminals` 为 101540/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 843478/845147；IAP 业务键缺口从 463 降至 251。发现一个额外键 `ZPCW/R23-Z`：`ZPCW-5P-2.pdf` 明确标为 RNP z RWY23 且 `CY600` 为 `MAPT`，参考只有 `R23-X/Y`。只读航段差分显示其 `R23-Z` 几何对应参考 `R23-Y`，而来源 `R23-Y` 对应 `R23-X`；PDF 尚未找到可解释这种置换的命名证据，不能按机场或参考特例回填。渲染 `ZBAD-0C-18.pdf` 还确认 RWY35R 编码表确实只到 `AD605`，其仪表图 `MAPT AD602` 不在编码表中，不能把图上 MAPT 当作缺失的编码航段。候选 SHA-256 `f34009672c88393b58fb5b8b3bce5497613a41e40c949ba0c8b15c708a4ac420` 不等于参考，禁止部署或发布。
 
+## 2026-08-08 AD 2.1 英文机场名称
+
+- 适用范围：每个机场资料 PDF 的 AD 2.1/2.2 首页标题。该标题在 ICAO/IATA 和中文名之后直接印有英文机场名，例如 `ZBAL/AXF-阿拉善左旗/巴彦浩特ALXA LEFT BANNER/Bayanhot`。
+- 解决方式：仅在非图表机场资料 PDF 的前两页中，解析出唯一匹配本机场 ICAO 的拉丁名称片段；以空格规范斜线和大小写，并把 PDF 页码和 SHA-256 记录为 `Airport.name_source`。多候选、冲突或没有英文名时继续使用 CSV 名称和确定性拼音。`test_extracts_english_airport_name_printed_after_ad21_chinese_name` 与歧义拒绝 fixture 覆盖该规则。
+- 验证：完整重新解析得到 271/275 条唯一 PDF 英文名证据。候选 `output/candidate-2608-airport-pdf-names` 的机场 `Name` 差异由 81 降至 72；`Latitude`、`Longtitude`、`Elevation`、`TransitionAltitude`、`TransitionLevel`、`SpeedLimit` 均保持零差异，`SpeedLimitAltitude` 仍有 44 条差异。`integrity_check=ok`，表计数为 `Airports 17346/17346`、`Terminals 101540/101618`、`TerminalLegs 843478/845147`；候选 SHA-256 `0bd011543f2176475fd51a3cc093495e0450a5b14342018b293b1d8cc463a07b` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。

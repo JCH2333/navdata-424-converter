@@ -7,6 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from pypinyin import lazy_pinyin
+import pymupdf
 
 from .model import CN_PREFIXES, Airport, AirwayLeg, NavModel, Navaid, ProcedureSegment, RejectedProcedure, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint, is_china_icao
 from .pdf_charts import extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_coordinate_pages, extract_airport_database_charts, extract_airport_standard_procedure_charts
@@ -27,6 +28,7 @@ _FIR_COUNTRIES = {
 # These border fixes have no FIR in the 2608 source table.  Their published
 # locations identify the adjacent Fenix country key deterministically.
 _EMPTY_FIR_COUNTRY_OVERRIDES = {"SARUL": "ZB", "MAGOG": "VH", "SULEM": "RC", "SADLI": "RK"}
+_AIRPORT_PDF_NAME = re.compile(r"\b(?P<icao>Z[A-Z]{3})/[A-Z0-9]{3}\s*[-–]\s*(?P<name>.*)")
 
 
 def parse_dms(value: str) -> float:
@@ -102,6 +104,53 @@ def romanize_name(value: str) -> str:
     return "".join(lazy_pinyin(value or "")).upper()
 
 
+def _airport_pdf_english_name(text: str, icao: str) -> str | None:
+    """Return an AD 2.1 English airport name printed after its Chinese name."""
+    values: set[str] = set()
+    for line in text.splitlines():
+        match = _AIRPORT_PDF_NAME.search(line.upper())
+        if match is None or match["icao"] != icao:
+            continue
+        original = line[match.start("name"):]
+        tail = re.search(r"(?P<english>[A-Za-z][A-Za-z0-9 /'\-]*)\s*$", original)
+        if tail is None:
+            continue
+        normalized = " ".join(re.findall(r"[A-Za-z0-9]+", tail["english"])).upper()
+        if normalized:
+            values.add(normalized)
+    return next(iter(values)) if len(values) == 1 else None
+
+
+def _load_airport_pdf_names(model: NavModel) -> None:
+    """Use only uniquely printed AD 2.1 English airport names as name evidence."""
+    terminal = model.root / "Terminal"
+    if not terminal.is_dir():
+        return
+    by_icao = {airport.icao: key for key, airport in model.airports.items()}
+    for icao, key in by_icao.items():
+        airport_directory = terminal / icao
+        if not airport_directory.is_dir():
+            continue
+        evidence: list[tuple[str, Path, int]] = []
+        for pdf in sorted(airport_directory.glob("*.pdf")):
+            if pdf.name.upper().startswith(f"{icao}-"):
+                continue
+            with pymupdf.open(pdf) as document:
+                for page_number in range(1, min(document.page_count, 2) + 1):
+                    name = _airport_pdf_english_name(document[page_number - 1].get_text("text"), icao)
+                    if name:
+                        evidence.append((name, pdf, page_number))
+        names = {name for name, _, _ in evidence}
+        if len(names) != 1:
+            continue
+        name, pdf, page_number = evidence[0]
+        source = SourceRef(
+            str(pdf.relative_to(model.root).as_posix()), page_number, page_number,
+            hashlib.sha256(pdf.read_bytes()).hexdigest(),
+        )
+        model.airports[key] = replace(model.airports[key], name=name, name_source=source)
+
+
 def navaid_country(serviced_airport: str, fir: str) -> str:
     airport_prefix = (serviced_airport or "").strip().upper()[:2]
     if airport_prefix in CN_PREFIXES:
@@ -155,6 +204,8 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
             round(parse_dms(row.get("GEO_LAT_ACCURACY") or ""), 6), round(parse_dms(row.get("GEO_LONG_ACCURACY") or ""), 6),
             _feet(row.get("VAL_ELEV") or "0"), _airport_altitude_feet(row.get("VAL_TRANSITION_ALT") or "0"),
             _airport_altitude_feet(row.get("VAL_TRANSITION_LEVEL") or "0"), SourceRef("AD_HP.csv", row_number))
+
+    _load_airport_pdf_names(model)
 
     runway_airports: dict[str, str] = {}
     dimensions: dict[str, tuple[int, int, str]] = {}

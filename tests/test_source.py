@@ -1,7 +1,7 @@
 from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, Ils, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
 import pytest
 
-from navdata_converter.source import _airport_altitude_feet, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _reject_unparsed_charts, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
+from navdata_converter.source import _airport_altitude_feet, _airport_pdf_english_name, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _reject_unparsed_charts, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
 
 
 def test_parse_latitude_and_longitude_with_fixed_degree_width():
@@ -51,6 +51,19 @@ def test_naip_runway_elevations_use_val_elev_not_zero_threshold_field():
 def test_romanize_name_matches_observed_fenix_spelling():
     assert romanize_name("\u970d\u6797\u90ed\u52d2") == "HUOLINGUOLEI"
     assert romanize_name("DGL") == "DGL"
+
+
+def test_extracts_english_airport_name_printed_after_ad21_chinese_name():
+    text = "ZBAL/AXF-阿拉善左旗/巴彦浩特ALXA LEFT BANNER/Bayanhot\n"
+
+    assert _airport_pdf_english_name(text, "ZBAL") == "ALXA LEFT BANNER BAYANHOT"
+
+
+def test_rejects_ambiguous_or_nonmatching_ad21_airport_name_evidence():
+    text = "ZBAL/AXF-阿拉善ALXA LEFT\nZBAL/AXF-阿拉善ALXA RIGHT\n"
+
+    assert _airport_pdf_english_name(text, "ZBAL") is None
+    assert _airport_pdf_english_name(text, "ZBCZ") is None
 
 
 def test_navaid_country_prefers_serviced_airport_and_falls_back_to_fir():

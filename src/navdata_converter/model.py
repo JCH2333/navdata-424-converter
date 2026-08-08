@@ -30,6 +30,7 @@ class Airport:
     transition_altitude: int
     transition_level: int
     source: SourceRef
+    name_source: SourceRef | None = None
 
 
 @dataclass(frozen=True)
