@@ -76,6 +76,10 @@ def fenix_procedure_name(label: str) -> str:
     suffix = match["suffix"]
     if re.fullmatch(r"P\d{3}", base):
         base = f"P{base[-2:]}"
+    elif len(base) == 5 and len(suffix) == 2:
+        # The six-character Fenix field preserves a five-character procedure
+        # family's first three and final character before a two-character revision.
+        base = f"{base[:3]}{base[-1]}"
     else:
         base = base[:max(1, 6 - len(suffix))]
     return f"{base}{suffix}"
