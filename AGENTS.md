@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 重复机场英文标题片段
+
+- 适用范围：机场资料 PDF AD 2.1 标题中同一英文机场名被连续打印两次的情况。`Terminal/ZSAQ/安庆.pdf` 第 1 页明确打印 `ZSAQ/AQG-安庆ANQING/Anqing`；这是来源中的同一名称大小写重复，不是两个不同的地点名。
+- 解决方式：`_airport_pdf_english_name` 仅当规范化后的英文词序列为相邻且完全重复时压缩为一个序列，故 `ANQING/Anqing -> ANQING`。不同名称的斜线分隔，例如 `ALXA LEFT BANNER/Bayanhot`，仍完整保留。合并器对已存在机场只允许修正“基线名称恰为来源名称的完整重复”这一可证明情况；不会因 PDF 标题别名、转写差异或 `AIRPORT` 后缀猜测覆盖基线。
+- 验证：`test_collapses_exact_repeated_english_airport_title_fragment`、已存在机场正反例 fixture 和全量 `pytest`（104 passed）通过。使用未传入参考库的 CSV/PDF 重解析生成 `output/candidate-2608-source-name-repeat`，`integrity_check=ok`，候选 SHA-256 为 `31309afbc9b0d7083ca3fabb03caf2e9d12eab3953a9ab9bba58c3e472258842`，仍不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`。随后只读差分确认 `ZSAQ` 名称为 `ANQING`，机场名称差异由 72 降至 71；候选仍为 `incomplete`，禁止部署或发布。
+
 ## 2026-08-08 五字符程序基名的两字符版本投影
 
 - 适用范围：2608 NAIP 终端 PDF 数据库编码表中的五字符普通基名、两字符版本号。`Terminal/ZBTJ/ZBTJ-4Z01.pdf` 原生文字层与离线 OCR 均明确打印 `BOTPU-2W`；同类来源标签包括 `AVBOX-1W`、`BUMDU-3H`、`DUMAP-1Q` 与 `GUVBA-1W`。
