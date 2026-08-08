@@ -176,6 +176,12 @@ def test_extracts_database_label_without_chinese_title_spacing():
     assert {item.procedure_kind for item in evidence} == {"离场"}
 
 
+def test_extracts_numeric_only_database_procedure_revision():
+    evidence = extract_terminal_leg_evidence("RWY17 进场UPGE94\nIF UPGED\nTF DL403")
+
+    assert [(item.procedure_label, item.leg_type) for item in evidence] == [("UPGE-94", "IF"), ("UPGE-94", "TF")]
+
+
 def test_normalizes_dashless_database_procedure_label_from_printed_heading():
     evidence = extract_terminal_leg_evidence("RWY36L/36R \u79bb\u573aIDKE5Y\nCA 001\nDF AA111 L\nTF AA112")
 

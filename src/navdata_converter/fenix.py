@@ -59,7 +59,7 @@ _FENIX_REFERENCE_ILS_CROSSING_HEIGHT_FEET = 50
 # collocated official identifiers.  Keep the behavior explicit and local to
 # the compatibility adapter rather than silently relying on row order.
 _REFERENCE2608_DESIGNATED_RETAIN = {"PAPA", "SADLI", "AGVUT", "OGIGI", "SULEM"}
-_PROCEDURE_LABEL = re.compile(r"^(?P<base>[A-Z0-9]+)-(?P<suffix>\d{1,2}[A-Z]{1,2})$")
+_PROCEDURE_LABEL = re.compile(r"^(?P<base>[A-Z0-9]+)-(?P<suffix>\d{1,2}(?:[A-Z]{1,2})?)$")
 _IAP_KINDS = {"\u8fdb\u8fd1\u8fc7\u6e21", "\u8fdb\u8fd1", "\u590d\u98de"}
 
 

@@ -66,6 +66,12 @@
 - 解决方式：跑道列表只以显式 `RWY` 或 `/` 分隔符识别，不要求跑道号后的单词边界。`test_extracts_shared_runways_when_the_heading_is_adjacent_to_chinese_text` 固定 `RWY02/20离场` 的双跑道证据；缓存版本升至 20。
 - 验证：重新解析完整 CSV/PDF 得到 9,561 个程序段，其中 ZBTL 从 4 条恢复为 43 条；未传入参考库的 `output/candidate-2608-runway-heading-boundary` 通过 `integrity_check=ok`。`Terminals 100538/101618`、`TerminalLegs/Ex 837861/845147`；终端业务键缺失 1,162、额外 105，其中 STAR `430/69`、SID `481/35`、IAP `251/1`。候选 SHA-256 `e24582792b28e9f0ef5815a0101381e56930e3ebe01749a919d2773caf5678c9` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 纯数字程序版本号
+
+- 适用范围：数据库编码页中 `RWY17进场UPGE94`、`RWY35进场CEH65` 这类基名后仅带两位数字的程序标签。常规标签规则要求数字后有字母，因而拒绝这些页面。
+- 解决方式：使用独立的纯数字版本号标题正则，仅匹配显式跑道和中文程序类型，避免与 `P389-09D`、`IDKE5Y` 的既有语法歧义。适配器接受带连字符的两位数字版本号。`test_extracts_numeric_only_database_procedure_revision` 和既有常规标签测试共同覆盖该分支；缓存版本升至 21。
+- 验证：重新解析完整 CSV/PDF 得到 9,814 个程序段，ZPDL 从 14 增至 34 个段。未传入参考库的 `output/candidate-2608-numeric-procedure` 通过 `integrity_check=ok`；`Terminals 100609/101618`、`TerminalLegs/Ex 838057/845147`。终端业务键缺失 1,110、额外 124，其中 STAR `419/76`、SID `440/47`、IAP `251/1`。候选 SHA-256 `8e699b29cb47e49fc93698bff492a196446470bfa4c2454218c777526c68c219` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。

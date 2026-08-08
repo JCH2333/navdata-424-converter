@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 20
+_EVIDENCE_CACHE_VERSION = 21
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -42,6 +42,11 @@ _DATABASE_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)*\s*"
     r"(?:(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)\s*|)[^\n]*?"
     r"(?P<label_base>[A-Z0-9]{1,6}?)-?(?P<label_suffix>\d{1,2}[A-Z]{1,2})(?:\b|\()"
+)
+_DATABASE_NUMERIC_PROCEDURE = re.compile(
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)*\s*"
+    r"(?:(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)\s*|)[^\n]*?"
+    r"(?P<label_base>[A-Z][A-Z0-9]{0,5}?)(?P<label_suffix>\d{2})(?:\b|\()"
 )
 _DATABASE_APPROACH_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1\u53ca\u590d\u98de|\u8fdb\u8fd1|\u590d\u98de)"
@@ -485,7 +490,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
 
     lines = [raw_line.strip() for raw_line in text.splitlines()]
     for line_number, line in enumerate(lines):
-        heading = _DATABASE_PROCEDURE.search(line)
+        heading = _DATABASE_PROCEDURE.search(line) or _DATABASE_NUMERIC_PROCEDURE.search(line)
         approach_heading = _DATABASE_APPROACH_PROCEDURE.search(line)
         if heading or approach_heading:
             flush()
