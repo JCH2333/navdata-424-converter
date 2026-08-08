@@ -272,6 +272,23 @@ def test_extracts_database_approach_transition_with_adjacent_fix():
     ]
 
 
+def test_extracts_database_approach_transition_with_printed_rnp_ils_or_ar_prefix():
+    evidence = extract_terminal_leg_evidence(
+        "RWY15 RNP ILS 进近过渡 IS96A\nIF AK966\nTF AK618\n"
+        "RWY10 AR z y进近过渡 TL106\nIF TL106\nTF TL102\n"
+        "RWY15 过渡MH503\nIF MH503\nTF MH502"
+    )
+
+    assert [(item.procedure_label, item.procedure_kind, item.transition, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("R15", "进近过渡", "IS96A", "IF", "AK966"),
+        ("R15", "进近过渡", "IS96A", "TF", "AK618"),
+        ("R10", "进近过渡", "TL106", "IF", "TL106"),
+        ("R10", "进近过渡", "TL106", "TF", "TL102"),
+        ("R15", "进近过渡", "MH503", "IF", "MH503"),
+        ("R15", "进近过渡", "MH503", "TF", "MH502"),
+    ]
+
+
 def test_splits_explicit_combined_approach_and_missed_heading_at_first_missed_leg():
     evidence = extract_terminal_leg_evidence(
         "RWY14 \u8fdb\u8fd1\u8fc7\u6e21 AL604\nIF AL604\nTF AL603\n"

@@ -53,12 +53,18 @@ _DATABASE_NUMERIC_PROCEDURE = re.compile(
     r"(?P<label_base>[A-Z][A-Z0-9]{0,5}?)(?P<label_suffix>\d{2})(?:\b|\()"
 )
 _DATABASE_APPROACH_PROCEDURE = re.compile(
-    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\s*\u8fc7\u6e21|\u8fdb\u8fd1(?:\u53ca|\u3001)\s*\u590d\u98de|\u8fdb\u8fd1|\u590d\u98de)"
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?:(?:RNP\s+)?ILS\s*)?(?:AR\s+[WXYZ](?:\s+[WXYZ])?\s*)?"
+    r"(?P<kind>\u8fdb\u8fd1\s*\u8fc7\u6e21|\u8fdb\u8fd1(?:\u53ca|\u3001)\s*\u590d\u98de|\u8fdb\u8fd1|\u590d\u98de)"
     r"(?:\s*-?\s*(?P<variant>[WXYZ]))?"
     r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5})|\s*VIA\s*(?P<via_transition>[A-Z][A-Z0-9]{0,5}))?\b", re.IGNORECASE
 )
 _DATABASE_ADJACENT_APPROACH_TRANSITION = re.compile(
-    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*\u8fdb\u8fd1\u8fc7\u6e21\s*(?P<transition>(?!VIA\b)[A-Z][A-Z0-9]{0,5})\b",
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?:(?:RNP\s+)?ILS\s*)?(?:AR\s+[WXYZ](?:\s+[WXYZ])?\s*)?"
+    r"\u8fdb\u8fd1\u8fc7\u6e21\s*(?P<transition>(?!VIA\b)[A-Z][A-Z0-9]{0,5})\b",
+    re.IGNORECASE,
+)
+_DATABASE_BARE_APPROACH_TRANSITION = re.compile(
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*\u8fc7\u6e21\s*(?P<transition>[A-Z][A-Z0-9]{0,5})\b",
     re.IGNORECASE,
 )
 _DATABASE_LEG = re.compile(r"\b(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
@@ -525,7 +531,7 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     for line_number, line in enumerate(lines):
         compound_heading = _DATABASE_COMPOUND_PROCEDURE.search(line)
         heading = compound_heading or _DATABASE_PROCEDURE.search(line) or _DATABASE_NUMERIC_PROCEDURE.search(line)
-        adjacent_transition_heading = _DATABASE_ADJACENT_APPROACH_TRANSITION.search(line)
+        adjacent_transition_heading = _DATABASE_ADJACENT_APPROACH_TRANSITION.search(line) or _DATABASE_BARE_APPROACH_TRANSITION.search(line)
         approach_heading = adjacent_transition_heading or _DATABASE_APPROACH_PROCEDURE.search(line)
         if heading or approach_heading:
             flush()
