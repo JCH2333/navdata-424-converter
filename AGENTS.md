@@ -54,6 +54,12 @@
 - 解决方式：提取每条标题中显式打印的跑道并为每条创建来源段；当同一机场、SID/STAR 类型和规范化标签由来源明确关联到多条跑道时，适配器写入一个 `Rwy=NULL` 的共享终端，同时保留每条来源段自己的 `RWxx` 过渡。单跑道程序继续保留其跑道键。`test_normalizes_dashless_database_procedure_label_from_printed_heading`、`test_extracts_direction_from_shared_runway_database_heading` 和 `test_merges_explicit_multi_runway_database_heading_into_shared_terminal` 覆盖提取、共享与单腿过渡。
 - 验证：重新解析完整 CSV/PDF（证据缓存版本 19）得到 9,520 个程序段，并生成未传入参考库的 `output/candidate-2608-multi-runway-heading`。`integrity_check=ok`；`Terminals 100557/101618`、`TerminalLegs/Ex 838900/845147`。终端业务键差异为缺失 1,203、额外 165，其中 STAR `452/96`、SID `500/68`、IAP `251/1`。候选 SHA-256 `17f62988e52dc566d3c51e7468d92aaa6b5da218d157f88660afbf93b00b5c4c` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 六字符 SID/STAR 名称投影
+
+- 适用范围：2608 PDF 数据库编码标签的普通基名与版本后缀。按来源标签与只读参考业务键统计，目标名称的普通形式保持六字符宽度：五字符基名配两字符后缀时取前三字符和末字符，配三字符后缀时取前三字符。示例：`BOTPU-2W -> BOTP2W`、`OPIMU-9ZD -> OPI9ZD`；`P### -> P##` 专用规则仍优先执行。
+- 解决方式：`fenix_procedure_name` 根据显式打印后缀长度计算可保留的基名长度，不再仅按基名固定截断。`test_fenix_procedure_name_matches_observed_database_labels` 覆盖两字符和三字符后缀边界，映射仅使用 PDF 标签。
+- 验证：用已完整重解析的 CSV/PDF 模型生成 `output/candidate-2608-six-char-procedure-name`，转换未传入参考库。`integrity_check=ok`；`Terminals 100497/101618`、`TerminalLegs/Ex 837666/845147`。终端业务键差异为缺失 1,203、额外 105，其中 STAR `452/69`、SID `500/35`、IAP `251/1`。候选 SHA-256 `80858fd57967b72cf8f69f68c0f9214a1c4593c26c2e332e1a59c5105010be9c` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。

@@ -66,18 +66,19 @@ _IAP_KINDS = {"\u8fdb\u8fd1\u8fc7\u6e21", "\u8fdb\u8fd1", "\u590d\u98de"}
 def fenix_procedure_name(label: str) -> str:
     """Convert a printed CAAC database label to the observed Fenix name.
 
-    Fenix retains four-character bases, shortens five-character bases to three
-    characters, and drops the leading digit from legacy three-digit P routes.
+    Fenix limits ordinary labels to a six-character base-plus-suffix form and
+    drops the leading digit from legacy three-digit P routes.
     """
     match = _PROCEDURE_LABEL.fullmatch(label.strip().upper())
     if not match:
         raise ValueError(f"unsupported terminal procedure label: {label!r}")
     base = match["base"]
+    suffix = match["suffix"]
     if re.fullmatch(r"P\d{3}", base):
         base = f"P{base[-2:]}"
-    elif len(base) > 4:
-        base = base[:3]
-    return f"{base}{match['suffix']}"
+    else:
+        base = base[:max(1, 6 - len(suffix))]
+    return f"{base}{suffix}"
 
 
 def fenix_procedure_type(label: str, procedure_kind: str) -> str:
