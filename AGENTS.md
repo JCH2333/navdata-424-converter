@@ -72,6 +72,12 @@
 - 解决方式：使用独立的纯数字版本号标题正则，仅匹配显式跑道和中文程序类型，避免与 `P389-09D`、`IDKE5Y` 的既有语法歧义。适配器接受带连字符的两位数字版本号。`test_extracts_numeric_only_database_procedure_revision` 和既有常规标签测试共同覆盖该分支；缓存版本升至 21。
 - 验证：重新解析完整 CSV/PDF 得到 9,814 个程序段，ZPDL 从 14 增至 34 个段。未传入参考库的 `output/candidate-2608-numeric-procedure` 通过 `integrity_check=ok`；`Terminals 100609/101618`、`TerminalLegs/Ex 838057/845147`。终端业务键缺失 1,110、额外 124，其中 STAR `419/76`、SID `440/47`、IAP `251/1`。候选 SHA-256 `8e699b29cb47e49fc93698bff492a196446470bfa4c2454218c777526c68c219` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 复合程序编码标题
+
+- 适用范围：ZPDQ 等数据库编码页中 `SHGRL1-DQ770`、`DEQIN1-P211`、`RNV16-DQ560` 形式的复合标题。原规则从内部 `DQ770` 开始匹配，丢失左侧程序族。
+- 解决方式：先识别显式跑道、离场/进场类型、左侧程序族和右侧三位序号；普通族取左侧前三字符，`RNVnn` 取 `Rnn`，再拼接三位序号。示例：`SHGRL1-DQ770 -> SHG-770 -> SHG770`，`RNV34-P186 -> R34-186 -> R34186`。`test_normalizes_compound_database_procedure_headings` 覆盖两类来源标题；缓存版本升至 22。
+- 验证：重新解析完整 CSV/PDF 得到 9,823 个程序段，ZPDQ 解析段为 28，未传入参考库的 `output/candidate-2608-compound-procedure` 通过 `integrity_check=ok`。`Terminals 100625/101618`、`TerminalLegs/Ex 838114/845147`；终端业务键缺失 1,086、额外 116，其中 STAR `405/74`、SID `430/41`、IAP `251/1`。候选 SHA-256 `2797a2e6e814ed137979703f3bcebe78da70814fde5c0ccf722873fc5f8cd112` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。

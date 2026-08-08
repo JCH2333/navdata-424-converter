@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 21
+_EVIDENCE_CACHE_VERSION = 22
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -42,6 +42,10 @@ _DATABASE_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)*\s*"
     r"(?:(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)\s*|)[^\n]*?"
     r"(?P<label_base>[A-Z0-9]{1,6}?)-?(?P<label_suffix>\d{1,2}[A-Z]{1,2})(?:\b|\()"
+)
+_DATABASE_COMPOUND_PROCEDURE = re.compile(
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u79bb\u573a|\u8fdb\u573a)\s*"
+    r"(?P<stem>[A-Z][A-Z0-9]{2,5})-(?:[A-Z]{0,2})(?P<serial>\d{3})(?:\b|\()"
 )
 _DATABASE_NUMERIC_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)*\s*"
@@ -490,7 +494,8 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
 
     lines = [raw_line.strip() for raw_line in text.splitlines()]
     for line_number, line in enumerate(lines):
-        heading = _DATABASE_PROCEDURE.search(line) or _DATABASE_NUMERIC_PROCEDURE.search(line)
+        compound_heading = _DATABASE_COMPOUND_PROCEDURE.search(line)
+        heading = compound_heading or _DATABASE_PROCEDURE.search(line) or _DATABASE_NUMERIC_PROCEDURE.search(line)
         approach_heading = _DATABASE_APPROACH_PROCEDURE.search(line)
         if heading or approach_heading:
             flush()
@@ -508,7 +513,12 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 # Some CAAC database pages print procedure names as IDKE5Y
                 # while others use IDKE-5Y.  Both expose the same base and
                 # suffix columns, so normalize the observable typography here.
-                active_label = f"{heading['label_base']}-{heading['label_suffix']}"
+                if compound_heading:
+                    stem = compound_heading["stem"]
+                    base = f"R{stem[-2:]}" if re.fullmatch(r"RNV\d{2}", stem) else stem[:3]
+                    active_label = f"{base}-{compound_heading['serial']}"
+                else:
+                    active_label = f"{heading['label_base']}-{heading['label_suffix']}"
                 active_runways = _database_heading_runways(heading.group(0))
                 active_kind = heading["kind"] or ""
                 active_transition = ""

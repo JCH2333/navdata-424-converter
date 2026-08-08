@@ -182,6 +182,14 @@ def test_extracts_numeric_only_database_procedure_revision():
     assert [(item.procedure_label, item.leg_type) for item in evidence] == [("UPGE-94", "IF"), ("UPGE-94", "TF")]
 
 
+def test_normalizes_compound_database_procedure_headings():
+    evidence = extract_terminal_leg_evidence("RWY16 离场 SHGRL1-DQ770\nIF DER16\nRWY34 进场 RNV34-P186\nTF P186")
+
+    assert [(item.procedure_label, item.procedure_kind, item.leg_type) for item in evidence] == [
+        ("SHG-770", "离场", "IF"), ("R34-186", "进场", "TF"),
+    ]
+
+
 def test_normalizes_dashless_database_procedure_label_from_printed_heading():
     evidence = extract_terminal_leg_evidence("RWY36L/36R \u79bb\u573aIDKE5Y\nCA 001\nDF AA111 L\nTF AA112")
 
