@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 标准进场图航迹简述表
+
+- 适用范围：2608 NAIP 标准仪表进场图底部的“进场程序代号 / 导航数据代号 / 航迹简述”表。`Terminal/ZBCZ/ZBCZ-4P-1.pdf` 原生 PDF 图元和文字表明确给出 `P439-A1 / P439A1 / P439-CZ823-CZ700` 以及 `P439-C3 / P439C3 / P439-CZ823-CZ622-CZ621`。这为此前 `CZ823` 分叉提供了直接来源证据，不需要 OCR 或参考记录回填。
+- 解决方式：标准图解析器按渲染文字位置重建表格，仅接受程序代号、导航数据代号和完整航迹三列都存在、首固定点一致且导航代码保留版本后缀的记录。对进场数据库编码段，仅当同机场同跑道、`P###` 首固定点和倒置版本号唯一关联该表项，并能在同一机场来源编码表找到唯一完整 ARINC 航段类型模板时，才以打印导航代码和完整航迹替换原来串接的分支；缺失或多候选一律不改写。
+- 验证：`test_extracts_standard_arrival_route_table_without_inferring_geometry`、缓存往返、唯一模板替换和加载顺序 fixture 均通过；全量 `pytest` 为 `108 passed`。使用未传入参考库的 CSV/PDF 转换生成 `output/candidate-2608-standard-route-tables-order`，`integrity_check=ok`，`Terminals` 为 `100683/101618`、`TerminalLegs/Ex` 为 `839313/845147`。候选 SHA-256 `0fdf940d8d7aa1a9e4172bba15f2a9a0d6b7b637ccb53ecf893a12096b092dc1` 不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，仍为 `incomplete`，禁止部署或发布。
+
 ## 2026-08-08 重复机场英文标题片段
 
 - 适用范围：机场资料 PDF AD 2.1 标题中同一英文机场名被连续打印两次的情况。`Terminal/ZSAQ/安庆.pdf` 第 1 页明确打印 `ZSAQ/AQG-安庆ANQING/Anqing`；这是来源中的同一名称大小写重复，不是两个不同的地点名。
