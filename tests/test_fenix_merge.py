@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_chart_roles, _iap_sections, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _split_iap_at_explicit_runway_map, _terminal_waypoint_resolutions, airport_speed_limit_altitude, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
-from navdata_converter.model import Airport, ChartRouteFix, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureChart, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_chart_roles, _iap_sections, _insert_airways, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _split_iap_at_explicit_runway_map, _terminal_waypoint_resolutions, airport_speed_limit_altitude, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.model import AirwayLeg, Airport, ChartRouteFix, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureChart, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
 def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path):
@@ -30,6 +30,55 @@ def test_merge_preserves_existing_airport_and_appends_only_missing_rows(tmp_path
     assert db.execute("SELECT ID, Name FROM Airports WHERE ICAO='ZBCF'").fetchone() == (11, "new")
     assert db.execute("SELECT AirportID FROM Runways").fetchone() == (11,)
     db.commit()
+
+
+def test_inserts_source_airway_with_printed_bidirectional_segments(tmp_path):
+    connection = sqlite3.connect(tmp_path / "airways.db3")
+    connection.executescript("""
+        CREATE TABLE Airways (ID INTEGER PRIMARY KEY, Ident TEXT NOT NULL);
+        CREATE TABLE AirwayLegs (ID INTEGER PRIMARY KEY, AirwayID INTEGER, Level TEXT, Waypoint1ID INTEGER, Waypoint2ID INTEGER, IsStart INTEGER NOT NULL, IsEnd INTEGER NOT NULL);
+        CREATE TABLE Waypoints (ID INTEGER PRIMARY KEY, Ident TEXT, Latitude REAL, Longtitude REAL);
+        INSERT INTO Waypoints VALUES (1, 'START', 30.0, 120.0);
+        INSERT INTO Waypoints VALUES (2, 'MIDDLE', 31.0, 121.0);
+        INSERT INTO Waypoints VALUES (3, 'END', 32.0, 122.0);
+    """)
+    source = SourceRef("RTE_SEG.csv", 2)
+    model = NavModel(tmp_path, airway_legs=[
+        AirwayLeg("W100", 1, "START", "MIDDLE", source, "X", 30.0, 120.0, 31.0, 121.0),
+        AirwayLeg("W100", 2, "MIDDLE", "END", SourceRef("RTE_SEG.csv", 3), "X", 31.0, 121.0, 32.0, 122.0),
+    ])
+
+    counts = _insert_airways(connection, model)
+
+    assert counts == {"airways_inserted": 1, "airway_legs_inserted": 4, "airway_rejections": []}
+    assert connection.execute("SELECT * FROM Airways").fetchall() == [(1, "W100")]
+    assert connection.execute("SELECT AirwayID, Level, Waypoint1ID, Waypoint2ID, IsStart, IsEnd FROM AirwayLegs ORDER BY ID").fetchall() == [
+        (1, "B", 1, 2, 1, 0),
+        (1, "B", 2, 3, 0, 1),
+        (1, "B", 3, 2, 1, 0),
+        (1, "B", 2, 1, 0, 1),
+    ]
+
+
+def test_rejects_airway_without_unique_source_coordinate_target(tmp_path):
+    connection = sqlite3.connect(tmp_path / "airway-ambiguous.db3")
+    connection.executescript("""
+        CREATE TABLE Airways (ID INTEGER PRIMARY KEY, Ident TEXT NOT NULL);
+        CREATE TABLE AirwayLegs (ID INTEGER PRIMARY KEY, AirwayID INTEGER, Level TEXT, Waypoint1ID INTEGER, Waypoint2ID INTEGER, IsStart INTEGER NOT NULL, IsEnd INTEGER NOT NULL);
+        CREATE TABLE Waypoints (ID INTEGER PRIMARY KEY, Ident TEXT, Latitude REAL, Longtitude REAL);
+        INSERT INTO Waypoints VALUES (1, 'DUP', 30.0, 120.0);
+        INSERT INTO Waypoints VALUES (2, 'DUP', 30.0, 120.0);
+        INSERT INTO Waypoints VALUES (3, 'END', 31.0, 121.0);
+    """)
+    model = NavModel(tmp_path, airway_legs=[
+        AirwayLeg("W101", 1, "DUP", "END", SourceRef("RTE_SEG.csv", 2), "F", 30.0, 120.0, 31.0, 121.0),
+    ])
+
+    counts = _insert_airways(connection, model)
+
+    assert counts["airways_inserted"] == 0
+    assert counts["airway_legs_inserted"] == 0
+    assert counts["airway_rejections"][0]["reason"] == "airway endpoint has no unique source-coordinate target waypoint"
 
 
 def test_merge_romanizes_source_backed_chinese_airport_name(tmp_path):

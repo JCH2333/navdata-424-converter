@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
-from .model import ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureSegment, TerminalWaypoint, is_china_icao
+from .model import AirwayLeg, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureSegment, TerminalWaypoint, is_china_icao
 from .pdf_charts import approach_procedure_name_candidates
 from .profile import validate_fenix_profile
 from .source import romanize_name
@@ -904,6 +904,96 @@ def _clear_china_airport_domain(connection: sqlite3.Connection) -> dict[str, int
     return counts
 
 
+def _resolve_airway_waypoint(
+    targets: dict[str, list[tuple[int, float, float]]],
+    ident: str,
+    latitude: float | None,
+    longitude: float | None,
+) -> int | None:
+    """Resolve an RTE_SEG endpoint only at its printed coordinate."""
+    if latitude is None or longitude is None:
+        return None
+    exact = [
+        waypoint_id for waypoint_id, target_latitude, target_longitude in targets.get(ident, [])
+        if math.isclose(latitude, target_latitude, abs_tol=1e-6)
+        and math.isclose(longitude, target_longitude, abs_tol=1e-6)
+    ]
+    return exact[0] if len(exact) == 1 else None
+
+
+def _insert_airways(connection: sqlite3.Connection, model: NavModel) -> dict[str, object]:
+    """Append complete source-defined RTE_SEG routes using their printed direction.
+
+    The NAIP segment direction is ``F`` (start to end), ``B`` (end to start),
+    or ``X`` (both).  All current NAIP route segments are projected to Fenix's
+    bidirectional route layer ``B``; no target route row is used as input.
+    """
+    groups: dict[str, list[AirwayLeg]] = {}
+    for leg in model.airway_legs:
+        if leg.airway and leg.start_ident and leg.end_ident:
+            groups.setdefault(leg.airway, []).append(leg)
+    existing = {str(ident) for ident, in connection.execute("SELECT Ident FROM Airways")}
+    targets: dict[str, list[tuple[int, float, float]]] = {}
+    for waypoint_id, ident, latitude, longitude in connection.execute("SELECT ID, Ident, Latitude, Longtitude FROM Waypoints"):
+        targets.setdefault(str(ident), []).append((int(waypoint_id), float(latitude), float(longitude)))
+    next_airway_id = _next_id(connection, "Airways")
+    next_leg_id = _next_id(connection, "AirwayLegs")
+    inserted_airways = 0
+    inserted_legs = 0
+    rejected: list[dict[str, object]] = []
+
+    for airway, source_legs in sorted(groups.items()):
+        if airway in existing:
+            continue
+        ordered = sorted(source_legs, key=lambda leg: (leg.sequence, leg.source.row or 0))
+        forward: list[tuple[int, int]] = []
+        backward: list[tuple[int, int]] = []
+        for source_leg in ordered:
+            start_id = _resolve_airway_waypoint(targets, source_leg.start_ident, source_leg.start_latitude, source_leg.start_longitude)
+            end_id = _resolve_airway_waypoint(targets, source_leg.end_ident, source_leg.end_latitude, source_leg.end_longitude)
+            if start_id is None or end_id is None:
+                rejected.append({
+                    "airway": airway, "reason": "airway endpoint has no unique source-coordinate target waypoint",
+                    "source": asdict(source_leg.source),
+                })
+                forward = []
+                backward = []
+                break
+            direction = source_leg.direction.upper()
+            if direction not in {"F", "B", "X"}:
+                rejected.append({"airway": airway, "reason": f"unsupported airway direction {direction!r}", "source": asdict(source_leg.source)})
+                forward = []
+                backward = []
+                break
+            if direction in {"F", "X"}:
+                forward.append((start_id, end_id))
+            if direction in {"B", "X"}:
+                backward.append((end_id, start_id))
+        projections = [*forward, *reversed(backward)]
+        if not projections:
+            continue
+        connection.execute("INSERT INTO Airways VALUES (?,?)", (next_airway_id, airway))
+        for index, (start_id, end_id) in enumerate(projections):
+            previous_end = projections[index - 1][1] if index else None
+            next_start = projections[index + 1][0] if index + 1 < len(projections) else None
+            starts_reverse_path = bool(forward and backward) and index == len(forward)
+            ends_forward_path = bool(forward and backward) and index + 1 == len(forward)
+            connection.execute(
+                "INSERT INTO AirwayLegs VALUES (?,?,?,?,?,?,?)",
+                (
+                    next_leg_id, next_airway_id, "B", start_id, end_id,
+                    int(index == 0 or starts_reverse_path or previous_end != start_id),
+                    int(index == len(projections) - 1 or ends_forward_path or next_start != end_id),
+                ),
+            )
+            next_leg_id += 1
+            inserted_legs += 1
+        existing.add(airway)
+        next_airway_id += 1
+        inserted_airways += 1
+    return {"airways_inserted": inserted_airways, "airway_legs_inserted": inserted_legs, "airway_rejections": rejected}
+
+
 def _insert_ilses(connection: sqlite3.Connection, model: NavModel, permitted_airports: set[str] | None = None) -> dict[str, object]:
     """Append only complete, source-backed ILS rows in deterministic order."""
     airport_ids = dict(connection.execute("SELECT ICAO, ID FROM Airports"))
@@ -1021,6 +1111,8 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
         ))
     if model.terminal_waypoints or model.waypoints or model.navaids:
         counts.update(_insert_waypoints(connection, model, navaid_additions))
+    if model.airway_legs:
+        counts.update(_insert_airways(connection, model))
     if model.procedure_segments:
         terminal_counts = _insert_terminal_procedures(connection, model)
         iap_counts = _insert_iap_procedures(connection, model)

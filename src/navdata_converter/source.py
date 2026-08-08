@@ -255,8 +255,19 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
                 reason="invalid coordinate or unmapped country", source=SourceRef("DESIGNATED_POINT.csv", row_number),
             ))
     for row_number, row in enumerate(_rows(root / "RTE_SEG.csv"), start=2):
-        model.airway_legs.append(AirwayLeg(row.get("TXT_DESIG") or "", _number(row.get("VAL_SORT") or "0"),
-            row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number)))
+        try:
+            model.airway_legs.append(AirwayLeg(
+                row.get("TXT_DESIG") or "", _number(row.get("VAL_SORT") or "0"),
+                row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number),
+                row.get("CODE_DIR") or "", parse_dms(row.get("GEO_LAT_START_ACCURACY") or ""),
+                parse_dms(row.get("GEO_LONG_START_ACCURACY") or ""), parse_dms(row.get("GEO_LAT_END_ACCURACY") or ""),
+                parse_dms(row.get("GEO_LONG_END_ACCURACY") or ""),
+            ))
+        except ValueError:
+            model.rejected_records.append(RejectedRecord(
+                kind="airway-leg", key=row.get("TXT_DESIG") or "", reason="invalid airway endpoint coordinate",
+                source=SourceRef("RTE_SEG.csv", row_number),
+            ))
     _load_terminal_coordinate_pages(model, pdf_cache)
     _load_terminal_landing_aids(model)
     _load_terminal_database_charts(model, pdf_cache)

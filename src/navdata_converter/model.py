@@ -118,6 +118,11 @@ class AirwayLeg:
     start_ident: str
     end_ident: str
     source: SourceRef
+    direction: str = ""
+    start_latitude: float | None = None
+    start_longitude: float | None = None
+    end_latitude: float | None = None
+    end_longitude: float | None = None
 
 
 @dataclass(frozen=True)
