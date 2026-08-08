@@ -5,10 +5,11 @@ import math
 import re
 import shutil
 import sqlite3
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from .model import ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureSegment, TerminalWaypoint, is_china_icao
+from .pdf_charts import approach_procedure_name_candidates
 from .profile import validate_fenix_profile
 from .source import romanize_name
 
@@ -59,6 +60,7 @@ _FENIX_REFERENCE_ILS_CROSSING_HEIGHT_FEET = 50
 # the compatibility adapter rather than silently relying on row order.
 _REFERENCE2608_DESIGNATED_RETAIN = {"PAPA", "SADLI", "AGVUT", "OGIGI", "SULEM"}
 _PROCEDURE_LABEL = re.compile(r"^(?P<base>[A-Z0-9]+)-(?P<suffix>\d{1,2}[A-Z]{1,2})$")
+_IAP_KINDS = {"\u8fdb\u8fd1\u8fc7\u6e21", "\u8fdb\u8fd1", "\u590d\u98de"}
 
 
 def fenix_procedure_name(label: str) -> str:
@@ -116,10 +118,10 @@ def project_database_terminal_leg(
     center: tuple[int, float, float] | None = None,
 ) -> FenixTerminalLegProjection:
     """Project a database-coding leg only when every required source value exists."""
-    type_codes = {"1": "6", "2": "5"}
+    type_codes = {"1": "6", "2": "5", "3": "0"}
     if procedure_type not in type_codes:
         raise ValueError(f"unsupported Fenix procedure type: {procedure_type}")
-    if leg.leg_type not in {"CA", "CF", "DF", "HF", "IF", "RF", "TF"}:
+    if leg.leg_type not in {"CA", "CF", "DF", "HF", "HM", "IF", "RF", "TF"}:
         raise ValueError(f"unsupported database leg type: {leg.leg_type}")
     if leg.fix_ident and waypoint is None:
         raise ValueError(f"missing resolved waypoint for {leg.fix_ident}")
@@ -138,6 +140,20 @@ def project_database_terminal_leg(
         float(leg.speed_limit_knots) if leg.speed_limit_knots is not None else None,
         "B" if leg.speed_limit_knots is not None else None,
         center_id, center_latitude, center_longitude,
+    )
+
+
+def project_database_iap_leg(
+    leg: ChartTerminalLeg,
+    transition: str | None,
+    waypoint_description: str,
+    waypoint: tuple[int, float, float] | None = None,
+    center: tuple[int, float, float] | None = None,
+) -> FenixTerminalLegProjection:
+    """Project one explicitly sectioned IAP leg with its Fenix description."""
+    return replace(
+        project_database_terminal_leg(leg, "3", transition or "", waypoint, center),
+        waypoint_description=waypoint_description,
     )
 
 
@@ -609,6 +625,121 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
     }
 
 
+def _iap_chart_roles(model: NavModel, segment: ProcedureSegment) -> dict[str, set[str]]:
+    """Return explicit IF/FAF/MAPT labels for one uniquely named approach chart."""
+    charts = [
+        chart for chart in model.procedure_charts
+        if chart.airport == segment.airport
+        and chart.chart_type == "instrument-approach-index"
+        and segment.runway in chart.runways
+        and segment.label in approach_procedure_name_candidates(chart.chart_name, chart.runways, segment.airport)
+    ]
+    if len(charts) != 1:
+        raise ConversionBlocked(f"IAP {segment.airport}/{segment.label} has {len(charts)} matching approach charts")
+    roles: dict[str, set[str]] = {}
+    for route_fix in charts[0].route_fixes:
+        roles.setdefault(route_fix.ident, set()).add(route_fix.role)
+    return roles
+
+
+def _insert_iap_procedures(connection: sqlite3.Connection, model: NavModel) -> dict[str, object]:
+    """Insert source-complete IAP plans assembled from their printed sections.
+
+    A Fenix IAP requires a MAP row in addition to the printed procedure legs.
+    It is emitted only when the selected approach chart explicitly marks the
+    final main-approach fix as MAPT, so its position remains source-backed.
+    """
+    groups: dict[tuple[str, str, str], list[ProcedureSegment]] = {}
+    for segment in model.procedure_segments:
+        if segment.kind in _IAP_KINDS:
+            groups.setdefault((segment.airport, segment.label, segment.runway), []).append(segment)
+    next_terminal_id = _next_id(connection, "Terminals")
+    next_leg_id = _next_id(connection, "TerminalLegs")
+    airport_ids = dict(connection.execute("SELECT ICAO, ID FROM Airports"))
+    runway_ids = {(airport_id, ident): runway_id for runway_id, airport_id, ident in connection.execute("SELECT ID, AirportID, Ident FROM Runways")}
+    existing = {(str(icao), str(proc), str(name), str(runway or "")) for icao, proc, name, runway in connection.execute("SELECT ICAO, Proc, Name, Rwy FROM Terminals")}
+    waypoint_resolutions, waypoint_failures = _terminal_waypoint_resolutions(connection, model)
+    inserted_terminals = 0
+    inserted_legs = 0
+    rejected: list[dict[str, object]] = []
+
+    for (airport, label, runway), segments in groups.items():
+        identity = (airport, "3", label, runway)
+        if identity in existing:
+            continue
+        primary = [segment for segment in segments if segment.kind == "\u8fdb\u8fd1"]
+        transitions = [segment for segment in segments if segment.kind == "\u8fdb\u8fd1\u8fc7\u6e21"]
+        missed = [segment for segment in segments if segment.kind == "\u590d\u98de"]
+        source = primary[0].source if primary else segments[0].source
+        try:
+            if len(primary) != 1 or not primary[0].legs:
+                raise ConversionBlocked("IAP requires exactly one non-empty main-approach section")
+            roles = _iap_chart_roles(model, primary[0])
+            map_leg = primary[0].legs[-1]
+            if map_leg.fix_ident is None or "MAPT" not in roles.get(map_leg.fix_ident, set()):
+                raise ConversionBlocked("IAP main approach does not end at an explicit MAPT fix")
+            airport_id = airport_ids.get(airport)
+            runway_id = runway_ids.get((airport_id, runway)) if airport_id is not None else None
+            if airport_id is None or runway_id is None:
+                raise ConversionBlocked("missing target airport or runway")
+            projected: list[tuple[FenixTerminalLegProjection, float | None]] = []
+
+            def append_leg(leg: ChartTerminalLeg, transition: str | None, description: str, vnav: float | None = None) -> None:
+                key = (airport, leg.fix_ident) if leg.fix_ident else None
+                center_key = (airport, leg.center_ident) if leg.center_ident else None
+                if key and key in waypoint_failures:
+                    raise ConversionBlocked(waypoint_failures[key])
+                if center_key and center_key in waypoint_failures:
+                    raise ConversionBlocked(waypoint_failures[center_key])
+                if key and key not in waypoint_resolutions:
+                    raise ConversionBlocked(f"terminal fix {airport}/{leg.fix_ident} has no source coordinate evidence")
+                if center_key and center_key not in waypoint_resolutions:
+                    raise ConversionBlocked(f"terminal RF center {airport}/{leg.center_ident} has no source coordinate evidence")
+                projected.append((project_database_iap_leg(
+                    leg, transition, description,
+                    waypoint_resolutions[key] if key else None,
+                    waypoint_resolutions[center_key] if center_key else None,
+                ), vnav))
+
+            for transition in transitions:
+                for index, leg in enumerate(transition.legs):
+                    append_leg(leg, transition.transition, "E A" if index == 0 else "EE B")
+            for index, leg in enumerate(primary[0].legs):
+                if index == 0:
+                    append_leg(leg, None, "EI")
+                else:
+                    role = roles.get(leg.fix_ident or "", set())
+                    append_leg(leg, None, "EF" if "FAF" in role else "E", 3.0 if role & {"FAF", "MAPT"} else None)
+            map_waypoint = waypoint_resolutions[(airport, map_leg.fix_ident)]
+            projected.append((FenixTerminalLegProjection(
+                "0", "", map_leg.leg_type, None, map_waypoint[1], map_waypoint[2], None,
+                None, "MAP", "GY M", None, None,
+            ), 3.0))
+            for section in missed:
+                for index, leg in enumerate(section.legs):
+                    append_leg(leg, None, "E M" if index == 0 else "EE")
+        except (ConversionBlocked, ValueError) as error:
+            rejected.append({"airport": airport, "label": label, "reason": str(error), "source": asdict(source)})
+            continue
+
+        connection.execute("INSERT INTO Terminals VALUES (?,?,?,?,?,?,?,?,?)", (next_terminal_id, airport_id, "3", airport, label, label, runway, runway_id, 0))
+        for projection, vnav in projected:
+            connection.execute("INSERT INTO TerminalLegsEx VALUES (?,?,?,?)", (next_leg_id, 0, projection.speed_limit, projection.speed_limit_description))
+            connection.execute(
+                "INSERT INTO TerminalLegs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (next_leg_id, next_terminal_id, projection.type_code, projection.transition or None, projection.track_code,
+                 projection.waypoint_id, projection.waypoint_latitude, projection.waypoint_longitude,
+                 projection.turn_direction, None, None, None, None, None, projection.course, None,
+                 projection.altitude, vnav, projection.center_id, projection.center_latitude, projection.center_longitude, projection.waypoint_description),
+            )
+            next_leg_id += 1
+            inserted_legs += 1
+        existing.add(identity)
+        next_terminal_id += 1
+        inserted_terminals += 1
+    return {"terminal_procedures_inserted": inserted_terminals, "terminal_legs_inserted": inserted_legs, "terminal_procedure_rejections": rejected}
+
+
 def _copy_navdata(official: Path, output: Path) -> Path:
     if output.exists():
         raise FileExistsError(f"输出目录已经存在: {output}")
@@ -756,7 +887,12 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
     if model.terminal_waypoints or model.waypoints or model.navaids:
         counts.update(_insert_waypoints(connection, model, navaid_additions))
     if model.procedure_segments:
-        counts.update(_insert_terminal_procedures(connection, model))
+        terminal_counts = _insert_terminal_procedures(connection, model)
+        iap_counts = _insert_iap_procedures(connection, model)
+        terminal_counts["terminal_procedures_inserted"] += iap_counts["terminal_procedures_inserted"]
+        terminal_counts["terminal_legs_inserted"] += iap_counts["terminal_legs_inserted"]
+        terminal_counts["terminal_procedure_rejections"].extend(iap_counts["terminal_procedure_rejections"])
+        counts.update(terminal_counts)
     return counts
 
 

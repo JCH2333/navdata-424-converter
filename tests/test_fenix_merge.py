@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _terminal_waypoint_resolutions, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _terminal_waypoint_resolutions, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
 from navdata_converter.model import Airport, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -193,6 +193,19 @@ def test_projects_database_leg_constraints_into_fenix_leg_and_extension_fields()
         "type_code": "5", "transition": "RW23", "track_code": "HF", "waypoint_id": 327032,
         "waypoint_latitude": 41.888611, "waypoint_longitude": 125.768556, "turn_direction": "L",
         "course": 257.0, "altitude": "5900A", "waypoint_description": "E", "speed_limit": None,
+        "speed_limit_description": None, "center_id": None, "center_latitude": None, "center_longitude": None,
+    }
+
+
+def test_projects_source_backed_iap_leg_with_approach_description():
+    leg = ChartTerminalLeg("R04", "04", "IF", "IAF01", "IF IAF01", "进近过渡")
+
+    projection = project_database_iap_leg(leg, "IAF01", "E A", (101, 30.1, 120.2))
+
+    assert projection.__dict__ == {
+        "type_code": "0", "transition": "IAF01", "track_code": "IF", "waypoint_id": 101,
+        "waypoint_latitude": 30.1, "waypoint_longitude": 120.2, "turn_direction": None,
+        "course": None, "altitude": None, "waypoint_description": "E A", "speed_limit": None,
         "speed_limit_description": None, "center_id": None, "center_latitude": None, "center_longitude": None,
     }
 
