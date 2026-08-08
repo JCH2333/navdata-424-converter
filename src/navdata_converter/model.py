@@ -123,6 +123,8 @@ class AirwayLeg:
     start_longitude: float | None = None
     end_latitude: float | None = None
     end_longitude: float | None = None
+    start_country: str = ""
+    end_country: str = ""
 
 
 @dataclass(frozen=True)

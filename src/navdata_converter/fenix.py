@@ -929,6 +929,31 @@ def _resolve_airway_waypoint(
     return nearby[0] if len(nearby) == 1 else None
 
 
+def _insert_airway_waypoints(connection: sqlite3.Connection, model: NavModel) -> dict[str, int]:
+    """Add RTE_SEG endpoint identities absent at their printed location."""
+    locations: dict[str, _WaypointLocations] = {}
+    for ident, latitude, longitude in connection.execute("SELECT Ident, Latitude, Longtitude FROM Waypoints"):
+        locations.setdefault(str(ident), _WaypointLocations([])).add(float(latitude), float(longitude))
+    inserted: set[tuple[str, float, float]] = set()
+    next_waypoint_id = _next_id(connection, "Waypoints")
+    for leg in model.airway_legs:
+        for ident, latitude, longitude, country in (
+            (leg.start_ident, leg.start_latitude, leg.start_longitude, leg.start_country),
+            (leg.end_ident, leg.end_latitude, leg.end_longitude, leg.end_country),
+        ):
+            if not ident or latitude is None or longitude is None or not country:
+                continue
+            identity = (ident, round(latitude, 9), round(longitude, 9))
+            point_locations = locations.setdefault(ident, _WaypointLocations([]))
+            if identity in inserted or point_locations.contains(latitude, longitude):
+                continue
+            _insert_waypoint(connection, next_waypoint_id, ident, ident, latitude, longitude, country)
+            inserted.add(identity)
+            point_locations.add(latitude, longitude)
+            next_waypoint_id += 1
+    return {"airway_waypoints_inserted": len(inserted)}
+
+
 def _insert_airways(connection: sqlite3.Connection, model: NavModel) -> dict[str, object]:
     """Append complete source-defined RTE_SEG routes using their printed direction.
 
@@ -1120,6 +1145,7 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
     if model.terminal_waypoints or model.waypoints or model.navaids:
         counts.update(_insert_waypoints(connection, model, navaid_additions))
     if model.airway_legs:
+        counts.update(_insert_airway_waypoints(connection, model))
         counts.update(_insert_airways(connection, model))
     if model.procedure_segments:
         terminal_counts = _insert_terminal_procedures(connection, model)

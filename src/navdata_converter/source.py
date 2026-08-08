@@ -256,12 +256,24 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
             ))
     for row_number, row in enumerate(_rows(root / "RTE_SEG.csv"), start=2):
         try:
+            start_latitude = parse_dms(row.get("GEO_LAT_START_ACCURACY") or "")
+            start_longitude = parse_dms(row.get("GEO_LONG_START_ACCURACY") or "")
+            end_latitude = parse_dms(row.get("GEO_LAT_END_ACCURACY") or "")
+            end_longitude = parse_dms(row.get("GEO_LONG_END_ACCURACY") or "")
+            start_ident = row.get("CODE_POINT_START") or ""
+            end_ident = row.get("CODE_POINT_END") or ""
+            try:
+                start_country = waypoint_country(row.get("CODE_FIR_START") or "", start_latitude, start_longitude, start_ident)
+            except ValueError:
+                start_country = ""
+            try:
+                end_country = waypoint_country(row.get("CODE_FIR_END") or "", end_latitude, end_longitude, end_ident)
+            except ValueError:
+                end_country = ""
             model.airway_legs.append(AirwayLeg(
                 row.get("TXT_DESIG") or "", _number(row.get("VAL_SORT") or "0"),
-                row.get("CODE_POINT_START") or "", row.get("CODE_POINT_END") or "", SourceRef("RTE_SEG.csv", row_number),
-                row.get("CODE_DIR") or "", parse_dms(row.get("GEO_LAT_START_ACCURACY") or ""),
-                parse_dms(row.get("GEO_LONG_START_ACCURACY") or ""), parse_dms(row.get("GEO_LAT_END_ACCURACY") or ""),
-                parse_dms(row.get("GEO_LONG_END_ACCURACY") or ""),
+                start_ident, end_ident, SourceRef("RTE_SEG.csv", row_number), row.get("CODE_DIR") or "",
+                start_latitude, start_longitude, end_latitude, end_longitude, start_country, end_country,
             ))
         except ValueError:
             model.rejected_records.append(RejectedRecord(

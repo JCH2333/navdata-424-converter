@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 RTE_SEG.csv 航路点坐标相位
+
+- 适用范围：`RTE_SEG.csv` 中与已存在指定点同标识、但不在 0.02 海里内的航路端点。指定点、台站和航路段可合法共享标识而具有不同的已发布坐标，按标识抑制该端点会使整条航路无法投影。
+- 解决方式：航路端点在写入 `Airways` 前建立独立来源相位。仅当同标识没有已写入的近距坐标、且 CSV 可确定端点坐标与国家时，插入独立 `Waypoints/WaypointLookup`；完全相同或近距点不重复插入。此阶段不更新既有同名点，也不从参考库选择坐标。
+- 自动化与验证：`test_inserts_source_airway_endpoint_only_when_its_location_is_absent` 覆盖同名近距去重与远距独立保留。基于同一 CSV/PDF 模型生成 `output/candidate-2608-airway-source-phase`：新增 231 个航路点、321 条航路和 922 条航段，162 条航路仍拒绝；`integrity_check=ok`，`Waypoints/Airways/AirwayLegs=330657/10181/159958`（参考 `330043/10338/163724`）。新增 513 个方向签名中 78 个与只读参考一致，其余保持来源驱动；SHA-256 `00f6d83aa3635b431567cce9a693428f1a59a4782cd022f2a22aa2ca2e0eebd9` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 RTE_SEG.csv 端点 DMS 精度容差
 
 - 适用范围：`RTE_SEG.csv` 的秒级 DMS 端点与 Fenix `Waypoints` 六位小数坐标之间的量化差异。精确比较不足以覆盖同一来源点的舍入误差，但不能把同名邻近点当作确定匹配。

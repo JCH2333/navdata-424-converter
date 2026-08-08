@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_chart_roles, _iap_sections, _insert_airways, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _split_iap_at_explicit_runway_map, _terminal_waypoint_resolutions, airport_speed_limit_altitude, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_chart_roles, _iap_sections, _insert_airway_waypoints, _insert_airways, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _split_iap_at_explicit_runway_map, _terminal_waypoint_resolutions, airport_speed_limit_altitude, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
 from navdata_converter.model import AirwayLeg, Airport, ChartRouteFix, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureChart, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -98,6 +98,28 @@ def test_inserts_airway_when_one_target_is_within_source_coordinate_precision(tm
 
     assert counts == {"airways_inserted": 1, "airway_legs_inserted": 1, "airway_rejections": []}
     assert connection.execute("SELECT Waypoint1ID, Waypoint2ID FROM AirwayLegs").fetchall() == [(1, 2)]
+
+
+def test_inserts_source_airway_endpoint_only_when_its_location_is_absent(tmp_path):
+    connection = sqlite3.connect(tmp_path / "airway-waypoints.db3")
+    connection.executescript("""
+        CREATE TABLE Waypoints (ID INTEGER PRIMARY KEY, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
+        CREATE TABLE WaypointLookup (Ident TEXT, Country TEXT, ID INTEGER);
+        INSERT INTO Waypoints VALUES (1, 'EXISTS', 0, 'EXISTS', 30.0, 120.0, NULL);
+    """)
+    model = NavModel(tmp_path, airway_legs=[
+        AirwayLeg("W103", 1, "NEW", "EXISTS", SourceRef("RTE_SEG.csv", 2), "F", 31.0, 121.0, 30.1, 120.0, "CN", "CN"),
+        AirwayLeg("W103", 2, "OTHER", "NEW", SourceRef("RTE_SEG.csv", 3), "F", 32.0, 122.0, 31.0, 121.0, "CN", "CN"),
+    ])
+
+    assert _insert_airway_waypoints(connection, model) == {"airway_waypoints_inserted": 3}
+    assert connection.execute("SELECT ID, Ident, Name, Latitude, Longtitude FROM Waypoints ORDER BY ID").fetchall() == [
+        (1, "EXISTS", "EXISTS", 30.0, 120.0),
+        (2, "NEW", "NEW", 31.0, 121.0),
+        (3, "EXISTS", "EXISTS", 30.1, 120.0),
+        (4, "OTHER", "OTHER", 32.0, 122.0),
+    ]
+    assert connection.execute("SELECT Ident, Country, ID FROM WaypointLookup ORDER BY ID").fetchall() == [("NEW", "CN", 2), ("EXISTS", "CN", 3), ("OTHER", "CN", 4)]
 
 
 def test_merge_romanizes_source_backed_chinese_airport_name(tmp_path):
