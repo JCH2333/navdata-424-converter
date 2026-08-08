@@ -158,6 +158,7 @@ def test_ils_projection_can_be_limited_to_new_airports(tmp_path):
 def test_fenix_procedure_name_matches_observed_database_labels():
     assert fenix_procedure_name("P389-09D") == "P8909D"
     assert fenix_procedure_name("P528-9ZD") == "P289ZD"
+    assert fenix_procedure_name("AVBO-8Y") == "AVBO8Y"
     assert fenix_procedure_name("KAKAT-9ZA") == "KAK9ZA"
     assert fenix_procedure_name("BM-09D") == "BM09D"
     assert fenix_procedure_type("TGO-9ZD", "离场") == "2"

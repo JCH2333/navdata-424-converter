@@ -42,6 +42,12 @@
 - 解决方式：限速高度为 `max(10000, TransitionLevel - 1800)` 英尺；只依赖机场 CSV 已投影的过渡层，不读取参考字段。对 188 个实际新增机场的只读验证中，该公式全部命中；低过渡层机场由 10,000 英尺下限处理。`test_projects_airport_speed_limit_altitude_from_transition_level_with_floor` 覆盖正常与下限两种情况。
 - 验证：候选 `output/candidate-2608-speed-limit-altitude` 的 `SpeedLimitAltitude` 差异由 44 降至 0；`Latitude`、`Longtitude`、`Elevation`、`TransitionAltitude`、`TransitionLevel` 和 `SpeedLimit` 仍为零差异，机场名称差异为 72。`integrity_check=ok`，表计数为 `Airports 17346/17346`、`Terminals 101540/101618`、`TerminalLegs 843478/845147`；候选 SHA-256 `37c8e836fe9d690a877e283bfe3ed5a645ed489ebe88058f681cf613d94a6cda` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 SID/STAR 四字符程序基名
+
+- 适用范围：2608 NAIP 终端 PDF 数据库编码表中 `BASE-REVISION` 形式的 SID/STAR 标签。对完整来源模型按 `(机场, Proc, 跑道)` 与只读参考业务键统计，四字符普通基名有 1,029 个段命中完整 `BASE+REVISION`，而五字符基名有 618 个段命中三字符截断；`P###` 仍有 471 个段命中既有 `P##` 专用缩写。
+- 解决方式：`fenix_procedure_name` 保留四字符普通基名，仅截断长度大于四的普通基名，并先执行 `P### -> P##` 规则。`AVBO-8Y -> AVBO8Y` 与既有 `KAKAT-9ZA -> KAK9ZA` 回归测试共同固定边界；统计仅用于验证规则，不读取或复制参考记录。
+- 验证：使用完整 CSV/PDF 来源模型生成 `output/candidate-2608-procedure-four-char-base`，转换未传入参考库。候选 `integrity_check=ok`；`Terminals 101147/101618`、`TerminalLegs/Ex 841232/845147`。终端业务键差异由缺失 1,895、额外 1,840 降为缺失 1,286、额外 838，其中 STAR 为 `500/509`、SID 为 `535/328`、IAP 保持 `251/1`。候选 SHA-256 `ac24e80c6d3f605c7b48e10e98804dff90612557688f1b97102e182b66d2dceb` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。

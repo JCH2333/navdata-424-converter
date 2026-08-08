@@ -66,7 +66,7 @@ _IAP_KINDS = {"\u8fdb\u8fd1\u8fc7\u6e21", "\u8fdb\u8fd1", "\u590d\u98de"}
 def fenix_procedure_name(label: str) -> str:
     """Convert a printed CAAC database label to the observed Fenix name.
 
-    Fenix retains the chart suffix, shortens long named procedures to three
+    Fenix retains four-character bases, shortens five-character bases to three
     characters, and drops the leading digit from legacy three-digit P routes.
     """
     match = _PROCEDURE_LABEL.fullmatch(label.strip().upper())
@@ -75,7 +75,7 @@ def fenix_procedure_name(label: str) -> str:
     base = match["base"]
     if re.fullmatch(r"P\d{3}", base):
         base = f"P{base[-2:]}"
-    elif len(base) > 3:
+    elif len(base) > 4:
         base = base[:3]
     return f"{base}{match['suffix']}"
 
