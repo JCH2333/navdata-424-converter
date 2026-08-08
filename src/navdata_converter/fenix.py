@@ -626,7 +626,12 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
 
 
 def _iap_chart_roles(model: NavModel, segment: ProcedureSegment) -> dict[str, set[str]]:
-    """Return explicit IF/FAF/MAPT labels for one uniquely named approach chart."""
+    """Return explicit IF/FAF/MAPT labels for one source-identifiable approach chart.
+
+    A coding-table label can legitimately name both an ILS and an RNP chart
+    for the same runway.  The final printed main-approach fix is sufficient
+    evidence only when exactly one of those charts explicitly calls it MAPT.
+    """
     charts = [
         chart for chart in model.procedure_charts
         if chart.airport == segment.airport
@@ -634,6 +639,14 @@ def _iap_chart_roles(model: NavModel, segment: ProcedureSegment) -> dict[str, se
         and segment.runway in chart.runways
         and segment.label in approach_procedure_name_candidates(chart.chart_name, chart.runways, segment.airport)
     ]
+    if len(charts) > 1 and segment.legs and segment.legs[-1].fix_ident:
+        map_fix = segment.legs[-1].fix_ident
+        map_charts = [
+            chart for chart in charts
+            if any(route_fix.ident == map_fix and route_fix.role == "MAPT" for route_fix in chart.route_fixes)
+        ]
+        if len(map_charts) == 1:
+            charts = map_charts
     if len(charts) != 1:
         raise ConversionBlocked(f"IAP {segment.airport}/{segment.label} has {len(charts)} matching approach charts")
     roles: dict[str, set[str]] = {}

@@ -24,6 +24,12 @@
 - 解决方式：只当变体主进近唯一，且基准标签的进近过渡/复飞段与其来自同一 PDF 页时，将共享段附加给该变体。不跨页、不跨文件、不按机场名称猜测。`test_iap_variant_uses_only_same_page_unlabelled_shared_sections` 覆盖同页接受与其他页拒绝。
 - 验证：候选 `output/candidate-2608-iap-shared-sections` 通过 `integrity_check`，`Terminals` 为 101327/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 840757/845147；IAP 业务键缺口保持 463，没有新增的非参考 IAP 键。SHA-256 `29af141aea901fb584f1faa436d6564a7d8bb8a2f9f362a73f572f29a4a53b4b` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 IAP MAPT 图页消歧
+
+- 适用范围：同一机场、跑道和数据库编码名称可匹配多张仪表进近图的 IAP。名称与跑道不足以区分 ILS、RNP 等不同图页，但主进近最后固定点是数据库编码表中可观察的来源事实。
+- 解决方式：仍先以名称和跑道筛选；多图候选时，只有当前主进近最后固定点在其中唯一一张图的原生 `MAPT` 标注中出现，才选择该图。零张或多张 `MAPT` 命中继续拒绝。`test_iap_chart_roles_selects_unique_chart_with_explicit_final_mapt` 固化该规则；不读取或复制参考记录。
+- 验证：候选 `output/candidate-2608-mapt-chart-disambiguation` 通过 `integrity_check`，`Terminals` 为 101540/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 843478/845147；IAP 业务键缺口从 463 降至 251。发现一个额外键 `ZPCW/R23-Z`：`ZPCW-5P-2.pdf` 明确标为 RNP z RWY23 且 `CY600` 为 `MAPT`，参考只有 `R23-X/Y`。该后缀映射来源尚未解释，不能按机场或参考特例回填；候选 SHA-256 `f34009672c88393b58fb5b8b3bce5497613a41e40c949ba0c8b15c708a4ac420` 不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。
