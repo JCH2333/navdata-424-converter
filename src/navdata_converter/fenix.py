@@ -923,12 +923,25 @@ def _insert_ilses(connection: sqlite3.Connection, model: NavModel, permitted_air
 
 def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, object]:
     airport_ids: dict[str, int] = {}
-    existing_airports = dict(connection.execute("SELECT ICAO, ID FROM Airports"))
+    existing_airports = {
+        str(icao): (int(airport_id), str(name))
+        for airport_id, name, icao in connection.execute("SELECT ID, Name, ICAO FROM Airports")
+    }
     inserted_airports: set[str] = set()
+    updated_airport_names = 0
     next_airport = _next_id(connection, "Airports")
     for airport in sorted(model.airports.values(), key=lambda item: item.icao):
         if airport.icao in existing_airports:
-            airport_ids[airport.key] = existing_airports[airport.icao]
+            airport_id, existing_name = existing_airports[airport.icao]
+            airport_ids[airport.key] = airport_id
+            # The official baseline supplies the global schema and unrelated
+            # records, but a uniquely parsed PDF English title is authoritative
+            # for the local airport name.  Leave every other existing airport
+            # field untouched until complete source-backed replacement exists.
+            source_name = airport.name if airport.name.isascii() else romanize_name(airport.name.replace("/", " "))
+            if airport.name_source is not None and source_name != existing_name:
+                connection.execute("UPDATE Airports SET Name=? WHERE ID=?", (source_name, airport_id))
+                updated_airport_names += 1
             continue
         airport_id = next_airport
         next_airport += 1
@@ -954,7 +967,13 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
         runways += 1
     navaid_additions = missing_navaids(connection, model.navaids)
     navaids = _insert_navaids(connection, model.navaids)
-    counts = {"airports_inserted": len(inserted_airports), "airports_preserved": len(airport_ids) - len(inserted_airports), "runways_inserted": runways, "navaids_inserted": navaids}
+    counts = {
+        "airports_inserted": len(inserted_airports),
+        "airports_preserved": len(airport_ids) - len(inserted_airports),
+        "airport_names_updated": updated_airport_names,
+        "runways_inserted": runways,
+        "navaids_inserted": navaids,
+    }
     if model.ilses:
         counts.update(_insert_ilses(
             connection, model,
