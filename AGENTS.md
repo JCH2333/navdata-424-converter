@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 无连字符程序标签
+
+- 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。
+- 解决方式：标题正则同时捕获带、不带连字符的“基名 + 后缀”，观察到的排版归一为 `基名-后缀`。该规则无 ICAO 特例；`test_normalizes_dashless_database_procedure_label_from_printed_heading` 覆盖共享跑道标题与 `CA/DF/TF` 航段，PDF 证据缓存版本升为 16。
+- 验证：完整重新解析 2608 CSV/PDF 后，数据库编码航段从 22775 增至 38882，程序分段从 4878 增至 7216。候选 `output/candidate-2608-dashless-label` 通过 `integrity_check`，`Terminals` 为 101079/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 837242/845147；SHA-256 为 `4d301f1b7cef29d34cdd03a26b987e3327b22720443d09392b276eaa0f041e18`，不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，仍不得部署或发布。
+
 ## 目标与边界
 
 当前目标是从 `424源数据\2608\2608` 的 CSV 与终端 PDF 生成 Fenix `Navdata/nd.db3`，最终与本地 `fnx2608N` 参考成品逐字节相同。参考库只可用于只读差分、验证映射与行为，不能作为转换输入或复制记录来源。当前候选均为测试诊断件，未部署、未发布。
