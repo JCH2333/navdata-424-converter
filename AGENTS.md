@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 RTE_SEG.csv 既有指定点与台站来源相位
+
+- 适用范围：`RTE_SEG.csv` 端点已存在于官方全球模板、随后又由终端坐标页写入同址航点的情况。`P439/P102/P99/P680` 在模板中有唯一同址指定点，`HDH/UQC` 有唯一带 `NavaidID` 的同址台站点；旧实现只为新插入记录登记来源映射，导致这些 CSV/PDF 来源点在航路投影时重新成为歧义。
+- 解决方式：`_insert_waypoints` 在写入终端点之前记录既有 `Waypoints`。当指定点因唯一既有近距记录而被吸收时，只在 CSV 坐标与该初始点精确唯一一致时登记指定点来源 ID；对台站仅登记唯一的既有 `NavaidID` 同址航点。航路投影优先使用这些临时来源映射，不向输出 schema 写入辅助数据，也不读取参考记录。两个或更多同址既有点仍拒绝，例如 `TAMOT`。
+- 自动化与验证：`test_waypoint_phases_map_unique_existing_designated_and_navaid_sources` 覆盖两类映射。基于既有 CSV/PDF 模型、未传入参考库生成 `output/candidate-2608-airway-existing-source-resolution`：本轮写入 479 条航路、1,813 条航段，拒绝由 10 降至 4（均为 `TAMOT`）；`Waypoints/Airways/AirwayLegs=330657/10339/160849`，`integrity_check=ok`（参考 `330043/10338/163724`）。只读方向签名为候选/参考/相同 `160849/163610/1262`。候选 SHA-256 `384d6aca75aa021bc750c33e7c22099fbcfc20c50bf12162b9d21a9e54edcf7d` 不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，严禁部署或发布。
+
 ## 2026-08-08 RTE_SEG.csv 指定点来源相位消歧
 
 - 适用范围：`RTE_SEG.csv` 航路端点与终端或指定点相位具有相同标识和精确坐标、因而在目标 `Waypoints` 中存在两个或更多候选的情况。`H127/P570` 证实其中一个同址候选由 `DESIGNATED_POINT.csv` 写入，另一个来自终端相位；仅按目标表查询会把具有结构化来源的端点误判为歧义。

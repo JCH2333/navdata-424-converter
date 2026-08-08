@@ -671,6 +671,29 @@ def test_waypoint_phases_map_shared_terminal_and_designated_source_ids(tmp_path)
     assert connection.execute("SELECT Ident, WaypointID FROM temp._fenix_source_designated_waypoints").fetchall() == [("P473", 2)]
 
 
+def test_waypoint_phases_map_unique_existing_designated_and_navaid_sources(tmp_path):
+    connection = sqlite3.connect(tmp_path / "existing-source-phase-maps.db3")
+    connection.executescript("""
+        CREATE TABLE Waypoints (ID INTEGER, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
+        CREATE TABLE WaypointLookup (Ident TEXT, Country TEXT, ID INTEGER);
+        CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Latitude REAL, Longtitude REAL);
+        INSERT INTO Waypoints VALUES (1, 'POINT', 0, 'POINT', 30.0, 120.0, NULL);
+        INSERT INTO Waypoints VALUES (2, 'NAV', 1, 'NAV', 31.0, 121.0, 8);
+    """)
+    source = SourceRef("fixture", 1)
+    model = NavModel(Path("."), terminal_waypoints=[
+        TerminalWaypoint("terminal", "ZTEST", "POINT", 30.0, 120.0, source, "ZT"),
+        TerminalWaypoint("terminal", "ZTEST", "NAV", 31.0, 121.0, source, "ZT"),
+    ], waypoints=[Waypoint("designated", "POINT", "POINT", 30.0, 120.0, source, "ZT")], navaids=[
+        Navaid("navaid", "NAV", "VOR", "NAV", 31.0, 121.0, 0.0, 0.0, 0, "ZT", source),
+    ])
+
+    _insert_waypoints(connection, model)
+
+    assert connection.execute("SELECT Ident, WaypointID FROM temp._fenix_source_designated_waypoints").fetchall() == [("POINT", 1)]
+    assert connection.execute("SELECT Ident, WaypointID FROM temp._fenix_source_navaid_waypoints").fetchall() == [("NAV", 2)]
+
+
 def test_runway_threshold_uses_reciprocal_heading_from_airport_reference_point():
     latitude, longitude = runway_threshold(40.5425, 122.3586111111111, 29, 8202)
 

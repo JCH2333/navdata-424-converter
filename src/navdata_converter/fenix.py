@@ -466,8 +466,15 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
     for ident, latitude, longitude in connection.execute("SELECT Ident, Latitude, Longtitude FROM Waypoints"):
         terminal_identities.setdefault(str(ident), _WaypointLocations([])).add(float(latitude), float(longitude))
     designated_identities: dict[str, list[tuple[float, float]]] = {}
-    for ident, latitude, longitude in connection.execute("SELECT Ident, Latitude, Longtitude FROM Waypoints"):
+    designated_targets: dict[str, list[tuple[int, float, float]]] = {}
+    navaid_targets: dict[str, list[tuple[int, float, float]]] = {}
+    for waypoint_id, ident, latitude, longitude, navaid_id in connection.execute(
+        "SELECT ID, Ident, Latitude, Longtitude, NavaidID FROM Waypoints"
+    ):
         designated_identities.setdefault(ident, []).append((latitude, longitude))
+        designated_targets.setdefault(str(ident), []).append((int(waypoint_id), float(latitude), float(longitude)))
+        if navaid_id is not None:
+            navaid_targets.setdefault(str(ident), []).append((int(waypoint_id), float(latitude), float(longitude)))
     next_waypoint_id = _next_id(connection, "Waypoints")
     connection.execute("DROP TABLE IF EXISTS temp._fenix_source_terminal_waypoints")
     connection.execute("DROP TABLE IF EXISTS temp._fenix_source_designated_waypoints")
@@ -479,6 +486,21 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
         "CREATE TEMP TABLE _fenix_source_designated_waypoints "
         "(Ident TEXT NOT NULL, Latitude REAL NOT NULL, Longtitude REAL NOT NULL, WaypointID INTEGER NOT NULL)"
     )
+    connection.execute(
+        "CREATE TEMP TABLE _fenix_source_navaid_waypoints "
+        "(Ident TEXT NOT NULL, Latitude REAL NOT NULL, Longtitude REAL NOT NULL, WaypointID INTEGER NOT NULL)"
+    )
+    for navaid in model.navaids:
+        candidates = [
+            waypoint_id for waypoint_id, latitude, longitude in navaid_targets.get(navaid.ident, [])
+            if math.isclose(navaid.latitude, latitude, abs_tol=1e-6)
+            and math.isclose(navaid.longitude, longitude, abs_tol=1e-6)
+        ]
+        if len(candidates) == 1:
+            connection.execute(
+                "INSERT INTO temp._fenix_source_navaid_waypoints VALUES (?,?,?,?)",
+                (navaid.ident, navaid.latitude, navaid.longitude, candidates[0]),
+            )
     terminal_point_ids: dict[tuple[str, float, float], int] = {}
     terminal_count = 0
     for point in model.terminal_waypoints:
@@ -507,6 +529,16 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
             _distance_nm(point.latitude, point.longitude, latitude, longitude) < 1
             for latitude, longitude in designated_identities.get(point.ident, [])
         ):
+            candidates = [
+                waypoint_id for waypoint_id, latitude, longitude in designated_targets.get(point.ident, [])
+                if math.isclose(point.latitude, latitude, abs_tol=1e-6)
+                and math.isclose(point.longitude, longitude, abs_tol=1e-6)
+            ]
+            if len(candidates) == 1:
+                connection.execute(
+                    "INSERT INTO temp._fenix_source_designated_waypoints VALUES (?,?,?,?)",
+                    (point.ident, point.latitude, point.longitude, candidates[0]),
+                )
             continue
         name = point.name if point.name.isascii() else romanize_name(point.name)
         _insert_waypoint(connection, next_waypoint_id, point.ident, name, point.latitude, point.longitude, point.country)
@@ -527,6 +559,10 @@ def _insert_waypoints(connection: sqlite3.Connection, model: NavModel, navaid_ad
             raise ConversionBlocked(f"missing inserted navaid for collocated waypoint: {navaid.ident}")
         name = navaid.name if navaid.name.isascii() else romanize_name(navaid.name)
         _insert_waypoint(connection, next_waypoint_id, navaid.ident, name, navaid.latitude, navaid.longitude, navaid.country, int(row[0]))
+        connection.execute(
+            "INSERT INTO temp._fenix_source_navaid_waypoints VALUES (?,?,?,?)",
+            (navaid.ident, navaid.latitude, navaid.longitude, next_waypoint_id),
+        )
         next_waypoint_id += 1
         navaid_count += 1
     return {"terminal_waypoints_inserted": terminal_count, "designated_waypoints_inserted": designated_count, "navaid_waypoints_inserted": navaid_count}
@@ -998,6 +1034,15 @@ def _insert_airways(connection: sqlite3.Connection, model: NavModel) -> dict[str
             (str(ident), round(float(latitude), 9), round(float(longitude), 9)): int(waypoint_id)
             for ident, latitude, longitude, waypoint_id in connection.execute(
                 "SELECT Ident, Latitude, Longtitude, WaypointID FROM temp._fenix_source_designated_waypoints"
+            )
+        })
+    if connection.execute(
+        "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='_fenix_source_navaid_waypoints'"
+    ).fetchone():
+        source_waypoint_ids.update({
+            (str(ident), round(float(latitude), 9), round(float(longitude), 9)): int(waypoint_id)
+            for ident, latitude, longitude, waypoint_id in connection.execute(
+                "SELECT Ident, Latitude, Longtitude, WaypointID FROM temp._fenix_source_navaid_waypoints"
             )
         })
     next_airway_id = _next_id(connection, "Airways")
