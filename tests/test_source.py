@@ -1,4 +1,4 @@
-from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, Ils, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
+from navdata_converter.model import ChartFixCoordinate, ChartRouteEdge, ChartTerminalLeg, Ils, NavModel, ProcedureChart, ProcedureSegment, SourceRef, TerminalWaypoint
 import pytest
 
 from navdata_converter.source import _airport_altitude_feet, _airport_pdf_english_name, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _reject_unparsed_charts, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
@@ -220,9 +220,23 @@ def test_terminal_standard_procedure_charts_are_retained_as_waypoint_evidence(mo
     airport_directory = tmp_path / "Terminal" / "ZYYK"
     airport_directory.mkdir(parents=True)
     chart = ProcedureChart("ZYYK", "ZYYK-3A.pdf", 1, "standard-terminal-procedure", "SID", "text-hash", (), (), ("YK551",), (), (), SourceRef("ignored"))
-    monkeypatch.setattr("navdata_converter.source.extract_airport_standard_procedure_charts", lambda _: [chart])
+    monkeypatch.setattr("navdata_converter.source.extract_airport_standard_procedure_charts", lambda *_, **__: [chart])
     model = NavModel(tmp_path)
 
     _load_terminal_standard_procedure_charts(model)
 
     assert model.procedure_charts == [chart]
+
+
+def test_trims_p_route_only_when_a_unique_plate_confirms_two_consecutive_edges(tmp_path):
+    from navdata_converter.source import _trim_p_route_segments
+
+    source = SourceRef("Terminal/ZBCZ/ZBCZ-4P-1.pdf", page=1, sha256="hash")
+    chart = ProcedureChart("ZBCZ", "ZBCZ-4P-1.pdf", 1, "standard-terminal-procedure", "RNP RWY01(P439)", "text", (), ("01",), (), (), (), source,
+        route_edges=(ChartRouteEdge("CZ823", "P439"), ChartRouteEdge("CZ700", "CZ823")))
+    legs = tuple(ChartTerminalLeg("P439-A1", "01", "TF", ident, f"TF {ident}", "进场") for ident in ("P439", "CZ823", "CZ700", "PADNO"))
+    model = NavModel(tmp_path, procedure_charts=[chart], procedure_segments=[ProcedureSegment("ZBCZ", "P439-A1", "进场", "01", "", legs, source)])
+
+    _trim_p_route_segments(model)
+
+    assert [leg.fix_ident for leg in model.procedure_segments[0].legs] == ["P439", "CZ823", "CZ700"]

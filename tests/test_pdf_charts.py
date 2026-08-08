@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, _positioned_database_text, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
+from navdata_converter.model import ChartFixCoordinate, ChartRouteEdge, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, _positioned_database_text, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_edges, extract_vector_route_fixes
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -427,6 +427,21 @@ def test_extracts_identifier_next_to_black_filled_vector_route_path():
     drawings = [{"type": "f", "fill": (0.0, 0.0, 0.0), "items": [("l", (30.0, 22.0), (72.0, 22.0))]}]
 
     assert extract_vector_route_fixes(words, drawings) == (ChartRouteFix("HZ413", "VECTOR"),)
+
+
+def test_extracts_adjacencies_from_labelled_filled_route_path():
+    words = [
+        (8.0, 8.0, 30.0, 16.0, "P439", 0, 0, 0),
+        (58.0, 8.0, 84.0, 16.0, "CZ823", 0, 1, 0),
+        (108.0, 8.0, 134.0, 16.0, "CZ700", 0, 2, 0),
+    ]
+    drawings = [{"type": "f", "fill": (0.0, 0.0, 0.0), "items": [
+        ("l", (18.0, 20.0), (68.0, 20.0)), ("l", (68.0, 20.0), (118.0, 20.0)),
+    ]}]
+
+    assert extract_vector_route_edges(words, drawings) == (
+        ChartRouteEdge("CZ700", "CZ823"), ChartRouteEdge("CZ823", "P439"),
+    )
 
 
 def test_vector_route_evidence_ignores_long_map_outline_strokes():

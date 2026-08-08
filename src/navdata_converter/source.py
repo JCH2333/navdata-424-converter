@@ -264,6 +264,7 @@ def load_naip(root: Path, pdf_cache: Path | None = None) -> NavModel:
     _retain_database_referenced_terminal_waypoints(model)
     _load_terminal_approach_charts(model, pdf_cache)
     _load_terminal_standard_procedure_charts(model, pdf_cache)
+    _trim_p_route_segments(model)
     _reject_unparsed_charts(model)
     return model
 
@@ -392,7 +393,39 @@ def _load_terminal_standard_procedure_charts(model: NavModel, pdf_cache: Path | 
         return
     for airport_directory in sorted(path for path in terminal.iterdir() if path.is_dir()):
         extractor = extract_airport_standard_procedure_charts
-        model.procedure_charts.extend(extractor(airport_directory) if pdf_cache is None else extractor(airport_directory, pdf_cache))
+        model.procedure_charts.extend(
+            extractor(airport_directory, include_p_route_vector_evidence=True)
+            if pdf_cache is None else extractor(airport_directory, pdf_cache, include_p_route_vector_evidence=True)
+        )
+
+
+def _trim_p_route_segments(model: NavModel) -> None:
+    """Trim an uncharted P-route tail only after two consecutive plate edges."""
+    result: list[ProcedureSegment] = []
+    for segment in model.procedure_segments:
+        match = re.fullmatch(r"(P\d{3})-[A-Z]?\d+[A-Z]?", segment.label)
+        if match is None:
+            result.append(segment)
+            continue
+        candidates = [
+            chart for chart in model.procedure_charts
+            if chart.chart_type == "standard-terminal-procedure"
+            and chart.airport == segment.airport
+            and match[1] in chart.chart_name.upper()
+            and segment.runway in chart.runways
+            and chart.route_edges
+        ]
+        if len(candidates) != 1:
+            result.append(segment)
+            continue
+        edges = {frozenset((edge.first, edge.second)) for edge in candidates[0].route_edges}
+        retained = list(segment.legs[:1])
+        for previous, current in zip(segment.legs, segment.legs[1:]):
+            if not previous.fix_ident or not current.fix_ident or frozenset((previous.fix_ident, current.fix_ident)) not in edges:
+                break
+            retained.append(current)
+        result.append(replace(segment, legs=tuple(retained)) if len(retained) >= 3 and len(retained) < len(segment.legs) else segment)
+    model.procedure_segments[:] = result
 
 
 def _reject_unparsed_charts(model: NavModel) -> None:
