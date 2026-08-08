@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 数据库编码表同一行压缩多航段
+
+- 适用范围：2608 NAIP 终端数据库编码 PDF 将两个或更多普通航段连续印在同一行的版式。`Terminal/ZBAL/ZBAL-0C-1.pdf` 明确打印 `CA 324 2100 RNP1 DF AL507 R 3000 MAX230 RNP1`；旧解析器仅对同一行的多个 RF 特判，因而将 `DF` 的转向/高度/限速误附给 `CA`，并漏掉 `DF` 航段。
+- 解决方式：按每个显式数据库航段标记切分同一文本行，片段内属性只属于该航段；只有整行唯一航段时才读取后续的独立列。该规则统一覆盖 CA/CF/DF/TF/RF 等已支持类型，不以图形或参考库补全属性。`test_splits_multiple_printed_database_legs_in_one_row_before_reading_attributes` 覆盖 CA 与 DF 的独立投影；PDF 证据缓存版本升为 29。
+- 验证：完整 `pytest` 为 `117 passed`。仅以 CSV/PDF 重解析 `output/model-2608-compressed-legs.pickle` 并生成未传入参考路径的 `output/candidate-2608-compressed-legs`；`integrity_check=ok`。候选终端航段从 `840767` 增至 `840885`（参考 `845147`），终端业务键缺失/额外保持 `936/101`。相对上一候选新增 78 个归一航段签名，其中 17 个已与只读参考签名完全匹配，未移除任何原先匹配签名。候选 SHA-256 `18d86a089bafbb65369777e8ac59f1a5533c9471011fbe18464bfd3286f952f2` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 数据库编码表同一行航段属性
 
 - 适用范围：2608 NAIP 终端数据库编码 PDF 中，航段类型、定位点、航向、高度、转向和限速打印在同一渲染文本行的版式。`Terminal/ZSWY/ZSWY-4Z01.pdf` 明确打印 `CF WY502 Y 027 1100 RNP1` 与 `DF WY819 2000 MAX333 RNP1`；旧 `_database_leg_attributes` 只扫描后续独立行，因此丢弃这些已打印的属性。
