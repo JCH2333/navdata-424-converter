@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 数据库编码进近过渡的紧邻定位点
+
+- 适用范围：2608 NAIP 数据库编码表中 `RWYxx 进近过渡FIX` 的无空格标题版式。`Terminal/ZBES/ZBES-4H.pdf` 原生文字层与独立 OCR 表格均明确给出 `RWY26 进近过渡ES406`、`RWY26 进近过渡ES407`，并逐行列出 `IF/TF` 航段；原解析器把它们误作空类型的伪标签 `ES4-06/ES4-07`。
+- 解决方式：新增只匹配 `进近过渡` 的 `_DATABASE_ADJACENT_APPROACH_TRANSITION`；普通进近、离场、进场标题仍不接受紧邻大写串。先于通用数据库标题解析，`VIA` 被显式排除以保持既有 `进近过渡via FIX` 规则。`test_extracts_database_approach_transition_with_adjacent_fix` 固定此版式。
+- 验证：完整 CSV/PDF 重解析和未传入参考库的候选 `output/candidate-2608-adjacent-transition` 通过 `integrity_check`。`Terminals` 保持 `100685/101618`，`TerminalLegs/Ex` 从 `839320/845147` 增至 `839456/845147`，缺口由 5827 缩至 5691。只读记录级差分确认候选 `ZBES/R26` 写入 `ES406 -> ES404` 与 `ES407 -> ES404` 两个过渡；对应同机场 `RNP RWY26` 图页独立标出 IAF/IF/FAF/MAPT。候选 SHA-256 `06a1178bff7ce697f932eca3e6d31033bb7d9eb1dba23b3003328dcab260a8dd` 仍不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，严禁部署或发布。
+
 ## 2026-08-08 数据库编码进近过渡标题的紧邻 via
 
 - 适用范围：2608 NAIP 终端 PDF 数据库编码表中 `RWYxx 进近过渡via FIX` 的无空格英文连接词版式。`Terminal/ZBDH/ZBDH-4H.pdf` 原生 PDF 文本层和独立 OCR 表格均明确打印 `RWY26 进近过渡via DH504`、`RWY26 进近过渡via DH509`；此前解析器只接受空格分隔的过渡定位点，因此把两段的 `procedure_kind` 留空。

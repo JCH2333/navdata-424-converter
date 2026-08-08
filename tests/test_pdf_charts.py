@@ -263,6 +263,15 @@ def test_extracts_database_approach_transition_with_adjacent_via_text():
     ]
 
 
+def test_extracts_database_approach_transition_with_adjacent_fix():
+    evidence = extract_terminal_leg_evidence("RWY26 \u8fdb\u8fd1\u8fc7\u6e21ES406\nIF ES406\nTF ES404")
+
+    assert [(item.procedure_label, item.procedure_kind, item.transition, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("R26", "\u8fdb\u8fd1\u8fc7\u6e21", "ES406", "IF", "ES406"),
+        ("R26", "\u8fdb\u8fd1\u8fc7\u6e21", "ES406", "TF", "ES404"),
+    ]
+
+
 def test_splits_explicit_combined_approach_and_missed_heading_at_first_missed_leg():
     evidence = extract_terminal_leg_evidence(
         "RWY14 \u8fdb\u8fd1\u8fc7\u6e21 AL604\nIF AL604\nTF AL603\n"

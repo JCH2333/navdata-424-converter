@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartStandardProcedureRoute, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 25
+_EVIDENCE_CACHE_VERSION = 26
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -56,6 +56,10 @@ _DATABASE_APPROACH_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1\u53ca\u590d\u98de|\u8fdb\u8fd1|\u590d\u98de)"
     r"(?:\s*-?\s*(?P<variant>[WXYZ]))?"
     r"(?:\s+(?P<transition>[A-Z][A-Z0-9]{0,5})|\s*VIA\s*(?P<via_transition>[A-Z][A-Z0-9]{0,5}))?\b", re.IGNORECASE
+)
+_DATABASE_ADJACENT_APPROACH_TRANSITION = re.compile(
+    r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*\u8fdb\u8fd1\u8fc7\u6e21\s*(?P<transition>(?!VIA\b)[A-Z][A-Z0-9]{0,5})\b",
+    re.IGNORECASE,
 )
 _DATABASE_LEG = re.compile(r"\b(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
 _DATABASE_RF_LEG = re.compile(r"\bRF\s*\[\s*(?P<center>[A-Z][A-Z0-9]{0,5})\s*,\s*\d+(?:\.\d+)?\s*\]\s*(?P<fix>[A-Z][A-Z0-9]{0,5})?")
@@ -521,16 +525,22 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
     for line_number, line in enumerate(lines):
         compound_heading = _DATABASE_COMPOUND_PROCEDURE.search(line)
         heading = compound_heading or _DATABASE_PROCEDURE.search(line) or _DATABASE_NUMERIC_PROCEDURE.search(line)
-        approach_heading = _DATABASE_APPROACH_PROCEDURE.search(line)
+        adjacent_transition_heading = _DATABASE_ADJACENT_APPROACH_TRANSITION.search(line)
+        approach_heading = adjacent_transition_heading or _DATABASE_APPROACH_PROCEDURE.search(line)
         if heading or approach_heading:
             flush()
             if approach_heading:
-                variant = (approach_heading["variant"] or "").upper()
+                variant = (approach_heading.groupdict().get("variant") or "").upper()
                 active_label = f"R{approach_heading['runway']}{f'-{variant}' if variant else ''}"
                 active_runways = (approach_heading["runway"],)
-                split_combined_approach_missed = approach_heading["kind"] == "\u8fdb\u8fd1\u53ca\u590d\u98de"
-                active_kind = "\u8fdb\u8fd1" if split_combined_approach_missed else approach_heading["kind"]
-                active_transition = approach_heading["transition"] or approach_heading["via_transition"] or ""
+                kind = approach_heading.groupdict().get("kind") or "\u8fdb\u8fd1\u8fc7\u6e21"
+                split_combined_approach_missed = kind == "\u8fdb\u8fd1\u53ca\u590d\u98de"
+                active_kind = "\u8fdb\u8fd1" if split_combined_approach_missed else kind
+                active_transition = (
+                    approach_heading.groupdict().get("transition")
+                    or approach_heading.groupdict().get("via_transition")
+                    or ""
+                )
                 # Approach pages can begin with a hold continuation, which is
                 # not attributable to the next approach transition.
                 active_rows = []
