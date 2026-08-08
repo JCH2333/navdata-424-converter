@@ -234,8 +234,8 @@ def test_trims_p_route_only_when_a_unique_plate_confirms_two_consecutive_edges(t
     source = SourceRef("Terminal/ZBCZ/ZBCZ-4P-1.pdf", page=1, sha256="hash")
     chart = ProcedureChart("ZBCZ", "ZBCZ-4P-1.pdf", 1, "standard-terminal-procedure", "RNP RWY01(P439)", "text", (), ("01",), (), (), (), source,
         route_edges=(ChartRouteEdge("CZ823", "P439"), ChartRouteEdge("CZ700", "CZ823")))
-    legs = tuple(ChartTerminalLeg("P439-A1", "01", "TF", ident, f"TF {ident}", "进场") for ident in ("P439", "CZ823", "CZ700", "PADNO"))
-    model = NavModel(tmp_path, procedure_charts=[chart], procedure_segments=[ProcedureSegment("ZBCZ", "P439-A1", "进场", "01", "", legs, source)])
+    legs = tuple(ChartTerminalLeg("PADN-1A", "01", "TF", ident, f"TF {ident}", "进场") for ident in ("P439", "CZ823", "CZ700", "PADNO"))
+    model = NavModel(tmp_path, procedure_charts=[chart], procedure_segments=[ProcedureSegment("ZBCZ", "PADN-1A", "进场", "01", "", legs, source)])
 
     _trim_p_route_segments(model)
 
