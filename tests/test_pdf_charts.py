@@ -176,6 +176,16 @@ def test_extracts_database_label_without_chinese_title_spacing():
     assert {item.procedure_kind for item in evidence} == {"离场"}
 
 
+def test_normalizes_dashless_database_procedure_label_from_printed_heading():
+    evidence = extract_terminal_leg_evidence("RWY36L/36R \u79bb\u573aIDKE5Y\nCA 001\nDF AA111 L\nTF AA112")
+
+    assert [(item.procedure_label, item.runway, item.procedure_kind, item.leg_type, item.fix_ident) for item in evidence] == [
+        ("IDKE-5Y", "36L", "\u79bb\u573a", "CA", None),
+        ("IDKE-5Y", "36L", "\u79bb\u573a", "DF", "AA111"),
+        ("IDKE-5Y", "36L", "\u79bb\u573a", "TF", "AA112"),
+    ]
+
+
 def test_extracts_direction_from_shared_runway_database_heading():
     evidence = extract_terminal_leg_evidence("RWY16L/16R/34L/34R \u79bb\u573aBOTPU-2W\nCF TJ931\nTF TJ932")
 

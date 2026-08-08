@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 15
+_EVIDENCE_CACHE_VERSION = 16
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -40,7 +40,8 @@ _CHART_COORDINATE = re.compile(
 )
 _DATABASE_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)(?:\s*/\s*(?:RWY\s?)?\d{2}[LRC]?)*\s*"
-    r"(?:(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)\s*|)[^\n]*?(?P<label>[A-Z0-9]{1,6}-\d{1,2}[A-Z]{1,2})(?:\b|\()"
+    r"(?:(?P<kind>\u79bb\u573a|\u8fdb\u573a|\u7b49\u5f85)\s*|)[^\n]*?"
+    r"(?P<label_base>[A-Z0-9]{1,6}?)-?(?P<label_suffix>\d{1,2}[A-Z]{1,2})(?:\b|\()"
 )
 _DATABASE_APPROACH_PROCEDURE = re.compile(
     r"\bRWY\s?(?P<runway>\d{2}[LRC]?)\s*(?P<kind>\u8fdb\u8fd1\u8fc7\u6e21|\u8fdb\u8fd1|\u590d\u98de)"
@@ -491,7 +492,10 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 # not attributable to the next approach transition.
                 active_rows = []
             else:
-                active_label = heading["label"]
+                # Some CAAC database pages print procedure names as IDKE5Y
+                # while others use IDKE-5Y.  Both expose the same base and
+                # suffix columns, so normalize the observable typography here.
+                active_label = f"{heading['label_base']}-{heading['label_suffix']}"
                 active_runway = heading["runway"]
                 active_kind = heading["kind"] or ""
                 active_transition = ""
