@@ -403,7 +403,7 @@ def _trim_p_route_segments(model: NavModel) -> None:
     """Trim an uncharted P-route tail only after two consecutive plate edges."""
     result: list[ProcedureSegment] = []
     for segment in model.procedure_segments:
-        match = re.fullmatch(r"P\d{3}", segment.legs[0].fix_ident or "") if segment.legs else None
+        match = re.fullmatch(r"(P\d{3})-[A-Z]?\d+[A-Z]?", segment.label)
         if match is None:
             result.append(segment)
             continue
@@ -411,7 +411,7 @@ def _trim_p_route_segments(model: NavModel) -> None:
             chart for chart in model.procedure_charts
             if chart.chart_type == "standard-terminal-procedure"
             and chart.airport == segment.airport
-            and match[0] in chart.chart_name.upper()
+            and match[1] in chart.chart_name.upper()
             and segment.runway in chart.runways
             and chart.route_edges
         ]
