@@ -187,6 +187,12 @@ def test_normalizes_dashless_database_procedure_label_from_printed_heading():
     ]
 
 
+def test_extracts_shared_runways_when_the_heading_is_adjacent_to_chinese_text():
+    evidence = extract_terminal_leg_evidence("RWY02/20\u79bb\u573aAPU-99D\nTF TL603")
+
+    assert [(item.runway, item.fix_ident) for item in evidence] == [("02", "TL603"), ("20", "TL603")]
+
+
 def test_extracts_direction_from_shared_runway_database_heading():
     evidence = extract_terminal_leg_evidence("RWY16L/16R/34L/34R \u79bb\u573aBOTPU-2W\nCF TJ931\nTF TJ932")
 

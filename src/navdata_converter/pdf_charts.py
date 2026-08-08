@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 19
+_EVIDENCE_CACHE_VERSION = 20
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -188,7 +188,7 @@ def _extract_runways(text: str) -> tuple[str, ...]:
 
 def _database_heading_runways(heading: str) -> tuple[str, ...]:
     """Keep every runway explicitly printed in one database-table heading."""
-    return tuple(dict.fromkeys(re.findall(r"(?:\bRWY\s*|/)\s*(\d{2}[LRC]?)\b", heading)))
+    return tuple(dict.fromkeys(re.findall(r"(?:\bRWY\s*|/)\s*(\d{2}[LRC]?)", heading)))
 
 
 def approach_procedure_name_candidates(chart_name: str, runways: tuple[str, ...], airport: str = "") -> tuple[str, ...]:
