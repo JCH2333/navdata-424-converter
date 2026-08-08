@@ -202,6 +202,17 @@ def test_splits_multiple_printed_database_legs_in_one_row_before_reading_attribu
     ]
 
 
+def test_extracts_if_and_rf_altitudes_without_using_rf_arc_radius():
+    evidence = extract_terminal_leg_evidence(
+        "RWY18L 进近 R18L-X\nIF AA173 2400 RNAV1\nRF[AR081, 3.1] AR045 L 2600 MAX180 RNP1"
+    )
+
+    assert [(item.leg_type, item.fix_ident, item.altitude_meters, item.turn_direction, item.speed_limit_knots) for item in evidence] == [
+        ("IF", "AA173", 2400.0, None, None),
+        ("RF", "AR045", 2600.0, "L", 180),
+    ]
+
+
 def test_extracts_fix_from_next_line_when_pdf_table_columns_are_separate():
     evidence = extract_terminal_leg_evidence("CF\nYK551\nRWY04 离场 P389-09D\nDF\nYK404\nTF\nP389")
 

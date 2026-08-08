@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartStandardProcedureRoute, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 29
+_EVIDENCE_CACHE_VERSION = 30
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -496,8 +496,15 @@ def _database_leg_attributes(
     elif leg_type == "CF" and numeric:
         course = numeric[0]
         altitude = numeric[1] if len(numeric) > 1 else None
-    elif leg_type in {"DF", "TF"} and numeric:
+    elif leg_type in {"DF", "TF", "IF"} and numeric:
         altitude = numeric[0]
+    elif leg_type == "RF":
+        # The bracketed value is the printed RF arc radius, not an altitude.
+        # Only consider values visibly printed after that bracket plus any
+        # following standalone table cells.
+        after_radius = inline_text.split("]", 1)[1] if "]" in inline_text else ""
+        rf_numeric = [float(value) for value in [*after_radius.replace(",", " ").split(), *values] if value.isdecimal()]
+        altitude = rf_numeric[0] if rf_numeric else None
     elif leg_type in {"HF", "HM"}:
         inline_turn = next((value for value in inline_values if value in {"L", "R"}), None)
         inline_speed_match = re.search(r"\bMAX(\d{2,3})\b", inline_text, re.IGNORECASE)
