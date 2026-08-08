@@ -18,6 +18,12 @@
 - 解决方式：进近标题变体的连字符可选、匹配不区分大小写，写入前仍归一为大写 `-W/-X/-Y/-Z`。`test_preserves_whitespace_separated_approach_variant_from_database_heading` 固定 `RWY01 进近 z -> R01-Z`。缓存版本升为 18。
 - 验证：完整重新解析后，程序分段为 7671。候选 `output/candidate-2608-approach-variants` 通过 `integrity_check`，`Terminals` 为 101327/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 840588/845147；IAP 业务键缺口为 463，仍无新增的非参考 IAP 键。SHA-256 `166bda4591a5e71546f65ac1c2328a77bde2b73b5be8b2b7e5df377bdd50cc28` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 同页 IAP 共享分段
+
+- 适用范围：同一机场、跑道、PDF 页内的 IAP 数据库编码表。示例 `ZBAA-0C-20.pdf` 将三个进近过渡和复飞列为无变体 `R01` 的共享段，而两条主进近明确为 `R01-Y` 与 `R01-Z`。源页本身没有为共享段重复打印变体后缀。
+- 解决方式：只当变体主进近唯一，且基准标签的进近过渡/复飞段与其来自同一 PDF 页时，将共享段附加给该变体。不跨页、不跨文件、不按机场名称猜测。`test_iap_variant_uses_only_same_page_unlabelled_shared_sections` 覆盖同页接受与其他页拒绝。
+- 验证：候选 `output/candidate-2608-iap-shared-sections` 通过 `integrity_check`，`Terminals` 为 101327/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 840757/845147；IAP 业务键缺口保持 463，没有新增的非参考 IAP 键。SHA-256 `29af141aea901fb584f1faa436d6564a7d8bb8a2f9f362a73f572f29a4a53b4b` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。
