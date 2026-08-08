@@ -918,7 +918,15 @@ def _resolve_airway_waypoint(
         if math.isclose(latitude, target_latitude, abs_tol=1e-6)
         and math.isclose(longitude, target_longitude, abs_tol=1e-6)
     ]
-    return exact[0] if len(exact) == 1 else None
+    if len(exact) == 1:
+        return exact[0]
+    if exact:
+        return None
+    nearby = [
+        waypoint_id for waypoint_id, target_latitude, target_longitude in targets.get(ident, [])
+        if _distance_nm(latitude, longitude, target_latitude, target_longitude) < 0.02
+    ]
+    return nearby[0] if len(nearby) == 1 else None
 
 
 def _insert_airways(connection: sqlite3.Connection, model: NavModel) -> dict[str, object]:

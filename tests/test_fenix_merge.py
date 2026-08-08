@@ -81,6 +81,25 @@ def test_rejects_airway_without_unique_source_coordinate_target(tmp_path):
     assert counts["airway_rejections"][0]["reason"] == "airway endpoint has no unique source-coordinate target waypoint"
 
 
+def test_inserts_airway_when_one_target_is_within_source_coordinate_precision(tmp_path):
+    connection = sqlite3.connect(tmp_path / "airway-near.db3")
+    connection.executescript("""
+        CREATE TABLE Airways (ID INTEGER PRIMARY KEY, Ident TEXT NOT NULL);
+        CREATE TABLE AirwayLegs (ID INTEGER PRIMARY KEY, AirwayID INTEGER, Level TEXT, Waypoint1ID INTEGER, Waypoint2ID INTEGER, IsStart INTEGER NOT NULL, IsEnd INTEGER NOT NULL);
+        CREATE TABLE Waypoints (ID INTEGER PRIMARY KEY, Ident TEXT, Latitude REAL, Longtitude REAL);
+        INSERT INTO Waypoints VALUES (1, 'START', 30.0001, 120.0);
+        INSERT INTO Waypoints VALUES (2, 'END', 31.0, 121.0);
+    """)
+    model = NavModel(tmp_path, airway_legs=[
+        AirwayLeg("W102", 1, "START", "END", SourceRef("RTE_SEG.csv", 2), "F", 30.0, 120.0, 31.0, 121.0),
+    ])
+
+    counts = _insert_airways(connection, model)
+
+    assert counts == {"airways_inserted": 1, "airway_legs_inserted": 1, "airway_rejections": []}
+    assert connection.execute("SELECT Waypoint1ID, Waypoint2ID FROM AirwayLegs").fetchall() == [(1, 2)]
+
+
 def test_merge_romanizes_source_backed_chinese_airport_name(tmp_path):
     db = sqlite3.connect(tmp_path / "test.db3")
     db.executescript("""
