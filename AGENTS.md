@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 标准图导航数据代码投影
+
+- 适用范围：已由标准进场图“程序代号 / 导航数据代码 / 航迹简述”表唯一关联并完成航段模板替换的 STAR。`Terminal/ZBCZ/ZBCZ-4P-1.pdf` 明确打印 `P439-A1 / P439A1 / P439-CZ823-CZ700`；替换后的源段此前仍把无连字符的 `P439A1` 交给普通标签解析器，因而被拒绝。
+- 解决方式：`ProcedureSegment.fenix_name` 仅由 `_replace_standard_p_arrivals()` 写入该表中打印的 `navigation_code`。Fenix 终端投影优先使用这个受来源关联保护的字段；任何未带该字段的无连字符标签仍由既有严格解析器拒绝，不扩大普通标签的接受范围。
+- 验证：标准图替换与受限投影 fixture 通过，全量 `pytest` 为 `109 passed`。未传入参考库的 CSV/PDF 转换生成 `output/candidate-2608-standard-route-navigation-code`，`integrity_check=ok`，SHA-256 `09dee5ea2df32ad8c90c3f1c9c1498c11d6e575da5a9839b4e01d77a50459223`，仍不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`。相对上一候选，`Terminals` 从 `100683` 增至 `100685`，`TerminalLegs/Ex` 从 `839313` 增至 `839320`；只读记录核对确认 `ZBCZ/P439A1/01` 已写入 `IF, TF, TF`。`P439C3` 和 `DRQ1R` 当前仍缺唯一来源模板，未按参考回填。候选仍为 `incomplete`，禁止部署或发布。
+
 ## 2026-08-08 标准进场图航迹简述表
 
 - 适用范围：2608 NAIP 标准仪表进场图底部的“进场程序代号 / 导航数据代号 / 航迹简述”表。`Terminal/ZBCZ/ZBCZ-4P-1.pdf` 原生 PDF 图元和文字表明确给出 `P439-A1 / P439A1 / P439-CZ823-CZ700` 以及 `P439-C3 / P439C3 / P439-CZ823-CZ622-CZ621`。这为此前 `CZ823` 分叉提供了直接来源证据，不需要 OCR 或参考记录回填。

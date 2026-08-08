@@ -208,6 +208,8 @@ class ProcedureSegment:
     transition: str
     legs: tuple[ChartTerminalLeg, ...]
     source: SourceRef
+    # Only a standard-procedure route table may set this printed Fenix code.
+    fenix_name: str | None = None
 
 
 @dataclass

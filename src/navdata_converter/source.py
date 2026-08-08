@@ -440,6 +440,7 @@ def _replace_standard_p_arrivals(model: NavModel) -> None:
         ) for leg in selected)
         replacements[index] = ProcedureSegment(
             segment.airport, route.navigation_code, segment.kind, segment.runway, segment.transition, legs, segment.source,
+            route.navigation_code,
         )
     for index, replacement in replacements.items():
         model.procedure_segments[index] = replacement

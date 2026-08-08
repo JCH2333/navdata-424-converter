@@ -231,6 +231,16 @@ def test_database_approach_segments_keep_explicit_fenix_variant_identity():
     assert fenix_terminal_identity(departure) == ("2", "BM09D", "04")
 
 
+def test_standard_route_navigation_code_bypasses_only_label_projection():
+    source = SourceRef("Terminal/ZBCZ/ZBCZ-4P-1.pdf", 1, 1, "hash")
+    standard_route = ProcedureSegment("ZBCZ", "P439A1", "进场", "01", "", (), source, "P439A1")
+    unsupported = ProcedureSegment("ZBCZ", "P439A1", "进场", "01", "", (), source)
+
+    assert fenix_terminal_identity(standard_route) == ("1", "P439A1", "01")
+    with pytest.raises(ValueError, match="unsupported terminal procedure label"):
+        fenix_terminal_identity(unsupported)
+
+
 def test_projects_database_leg_constraints_into_fenix_leg_and_extension_fields():
     cf = ChartTerminalLeg("P389-09D", "04", "CF", "YK551", "CF YK551", course_degrees=37.0, speed_limit_knots=220)
     df = ChartTerminalLeg("P389-09D", "04", "DF", "YK404", "DF YK404", altitude_meters=900.0, turn_direction="L")

@@ -106,7 +106,8 @@ def fenix_terminal_identity(segment: ProcedureSegment) -> tuple[str, str, str]:
     """
     if segment.kind in {"进近过渡", "进近", "复飞"}:
         return "3", segment.label, segment.runway
-    return fenix_procedure_type(segment.label, segment.kind), fenix_procedure_name(segment.label), segment.runway
+    name = segment.fenix_name or fenix_procedure_name(segment.label)
+    return fenix_procedure_type(segment.label, segment.kind), name, segment.runway
 
 
 def _constraint_altitude(meters: float | None) -> str | None:

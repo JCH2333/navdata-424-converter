@@ -225,6 +225,7 @@ def test_standard_route_table_replaces_only_a_uniquely_templated_p_arrival(tmp_p
     assert (replacement.kind, replacement.runway, [leg.leg_type for leg in replacement.legs], [leg.fix_ident for leg in replacement.legs]) == (
         "进场", "01", ["IF", "TF", "TF"], ["P439", "CZ823", "CZ700"],
     )
+    assert replacement.fenix_name == "P439A1"
     assert not any(segment.label == "PADN-1A" for segment in model.procedure_segments)
 
 
