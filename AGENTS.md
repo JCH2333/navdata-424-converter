@@ -6,6 +6,12 @@
 - 解决方式：只对能唯一关联进近图、主进近终点有明确 `MAPT`、且全部固定点能以 CSV/PDF 坐标唯一解析的 IAP 写入。进近过渡使用 `E A/EE B`、主进近使用 `EI/EF/E`、复飞使用 `E M/EE`；由最后一个明确 `MAPT` 坐标生成 `MAP` 行，不读取或复制参考行。多图匹配、缺 MAPT 或缺坐标的 IAP 保留为拒绝记录。
 - 验证：`test_projects_source_backed_iap_leg_with_approach_description` 与全量 `pytest` 均通过（`90 passed`）。候选 `output/candidate-2608-iap` 通过 `integrity_check`，`Terminals` 为 101201/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 839131/845147；IAP 业务键缺口为 589（已从 711 降低），没有参考不存在的新 IAP 键。SHA-256 `c6f6c733c445cb2571aa47c7eaf44e2ffe84f2df4b5716ba690dae66f2c331ec` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 合并的进近与复飞标题
+
+- 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。`Terminal/ZBAL/ZBAL-0C-2.pdf` 明确打印 `RWY14 进近及复飞`，其后先为 `IF/TF` 主进近行，再以 `CF/DF` 开始复飞行。旧解析器不识别该显式合并标题，导致全段错附到上一条进近过渡。
+- 解决方式：仅当标题显式为“进近及复飞”时，将其作为主进近开始；在已有主进近行后，第一个 `CA/CF/DF` 行切换为同一显式标题下的复飞段。`test_splits_explicit_combined_approach_and_missed_heading_at_first_missed_leg` 终端跳转固化此版式，PDF 证据缓存版本升为 17。
+- 验证：完整重新解析后，程序分段从 7216 增至 7588，数据库编码航段从 38882 增至 39241。候选 `output/candidate-2608-combined-approach` 通过 `integrity_check`，`Terminals` 为 101277/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 840146/845147；IAP 业务键缺口为 513，仍无新增的非参考 IAP 键。SHA-256 `d765a6fddfd887d18b321e130251e17b3d5f2f6483ee8685c1e4639dd3a20552` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。
