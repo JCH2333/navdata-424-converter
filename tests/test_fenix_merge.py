@@ -75,6 +75,28 @@ def test_merge_updates_existing_airport_name_only_when_pdf_title_is_unique(tmp_p
     )
 
 
+def test_merge_preserves_existing_airport_name_when_pdf_title_is_not_a_literal_repetition(tmp_path):
+    db = sqlite3.connect(tmp_path / "test.db3")
+    db.executescript("""
+        CREATE TABLE Airports (ID INTEGER, Name TEXT, ICAO TEXT, PrimaryID INTEGER, Latitude REAL, Longtitude REAL, Elevation INTEGER, TransitionAltitude INTEGER, TransitionLevel INTEGER, SpeedLimit INTEGER, SpeedLimitAltitude INTEGER);
+        CREATE TABLE AirportLookup (extID TEXT, ID INTEGER);
+        CREATE TABLE Runways (ID INTEGER, AirportID INTEGER, Ident TEXT, TrueHeading REAL, Length INTEGER, Width INTEGER, Surface TEXT, Latitude REAL, Longtitude REAL, Elevation INTEGER);
+        CREATE TABLE Navaids (ID INTEGER, Ident TEXT, Type TEXT, Name TEXT, Freq INTEGER, Channel TEXT, Usage TEXT, Latitude REAL, Longtitude REAL, Elevation INTEGER, SlavedVar REAL, MagneticVariation REAL, Range INTEGER);
+        CREATE TABLE NavaidLookup (Ident TEXT, Type TEXT, Country TEXT, NavKeyCode TEXT, ID INTEGER);
+        INSERT INTO Airports VALUES (10, 'ARXAN YIERSHI', 'ZBES', NULL, 1, 2, 3, 4, 5, 250, 10000);
+    """)
+    source = SourceRef("AD_HP.csv", 1)
+    name_source = SourceRef("Terminal/ZBES/阿尔山伊尔施.pdf", 1, 1, "source-hash")
+    model = NavModel(Path("."), airports={
+        "sourced": Airport("sourced", "ZBES", "AERSHAN YIERSHI", 90, 91, 92, 93, 94, source, name_source),
+    })
+
+    counts = _insert_model(db, model)
+
+    assert counts["airport_names_updated"] == 0
+    assert db.execute("SELECT Name FROM Airports WHERE ICAO='ZBES'").fetchone() == ("ARXAN YIERSHI",)
+
+
 def test_clears_only_china_airport_domain_in_foreign_key_order(tmp_path):
     connection = sqlite3.connect(tmp_path / "regional-replace.db3")
     connection.executescript("""

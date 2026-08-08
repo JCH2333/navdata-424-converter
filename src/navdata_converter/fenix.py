@@ -934,12 +934,25 @@ def _insert_model(connection: sqlite3.Connection, model: NavModel) -> dict[str, 
         if airport.icao in existing_airports:
             airport_id, existing_name = existing_airports[airport.icao]
             airport_ids[airport.key] = airport_id
-            # The official baseline supplies the global schema and unrelated
-            # records, but a uniquely parsed PDF English title is authoritative
-            # for the local airport name.  Leave every other existing airport
-            # field untouched until complete source-backed replacement exists.
+            # A uniquely parsed title normally remains evidence for an inserted
+            # airport only.  For an existing row, correct it only when the
+            # baseline is visibly an exact repetition of that same source name
+            # (for example ``ANQING ANQING`` vs ``ANQING``).  Other title
+            # aliases are not enough evidence to replace the target's airport
+            # spelling before complete source-backed regional replacement.
             source_name = airport.name if airport.name.isascii() else romanize_name(airport.name.replace("/", " "))
-            if airport.name_source is not None and source_name != existing_name:
+            source_words = source_name.split()
+            existing_words = existing_name.split()
+            is_repeated_source_name = (
+                bool(source_words)
+                and len(existing_words) > len(source_words)
+                and len(existing_words) % len(source_words) == 0
+                and all(
+                    existing_words[offset:offset + len(source_words)] == source_words
+                    for offset in range(0, len(existing_words), len(source_words))
+                )
+            )
+            if airport.name_source is not None and is_repeated_source_name:
                 connection.execute("UPDATE Airports SET Name=? WHERE ID=?", (source_name, airport_id))
                 updated_airport_names += 1
             continue
