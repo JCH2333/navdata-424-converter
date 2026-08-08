@@ -151,7 +151,6 @@ class ProcedureChart:
     fix_coordinates: tuple["ChartFixCoordinate", ...]
     source: SourceRef
     route_fixes: tuple["ChartRouteFix", ...] = ()
-    route_edges: tuple["ChartRouteEdge", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -186,14 +185,6 @@ class ChartRouteFix:
 
     ident: str
     role: str
-
-
-@dataclass(frozen=True)
-class ChartRouteEdge:
-    """An undirected fix adjacency observed on a procedure plate."""
-
-    first: str
-    second: str
 
 
 @dataclass(frozen=True)

@@ -19,7 +19,7 @@ from typing import Callable
 import pymupdf
 from pypdf import PdfReader
 
-from .model import ChartFixCoordinate, ChartRouteEdge, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
+from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
 _EVIDENCE_CACHE_VERSION = 22
@@ -434,61 +434,6 @@ def extract_vector_route_fixes(words: list[tuple[float, float, float, float, str
     return tuple(dict.fromkeys(result))
 
 
-def extract_vector_route_edges(words: list[tuple[float, float, float, float, str, int, int, int]], drawings: list[dict[str, object]]) -> tuple[ChartRouteEdge, ...]:
-    """Return labelled adjacencies from native filled procedure paths.
-
-    Direction is intentionally not inferred from drawing order.  The database
-    coding table supplies it later, while the plate proves only connectivity.
-    """
-    segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
-    for drawing in drawings:
-        if drawing.get("type") != "f" or drawing.get("fill") != (0.0, 0.0, 0.0):
-            continue
-        lines = [(_point_xy(item[1]), _point_xy(item[2])) for item in drawing.get("items", []) if item[0] == "l"]
-        if not lines:
-            continue
-        points = [point for line in lines for point in line]
-        if max(max(x for x, _ in points) - min(x for x, _ in points), max(y for _, y in points) - min(y for _, y in points)) >= 24:
-            segments.extend(lines)
-    if not segments:
-        return ()
-    points = [point for segment in segments for point in segment]
-    parent = list(range(len(points)))
-
-    def root(index: int) -> int:
-        while parent[index] != index:
-            parent[index] = parent[parent[index]]
-            index = parent[index]
-        return index
-
-    for first, point in enumerate(points):
-        for second, other in enumerate(points[:first]):
-            if ((point[0] - other[0]) ** 2 + (point[1] - other[1]) ** 2) ** 0.5 <= 20:
-                left, right = root(first), root(second)
-                if left != right:
-                    parent[right] = left
-    members: dict[int, list[tuple[float, float]]] = {}
-    for index, point in enumerate(points):
-        members.setdefault(root(index), []).append(point)
-    centers = {node: (sum(x for x, _ in values) / len(values), sum(y for _, y in values) / len(values)) for node, values in members.items()}
-    labels: dict[int, set[str]] = {}
-    for x0, y0, x1, y1, raw_identifier, *_ in words:
-        identifier = raw_identifier.upper()
-        if not _COORDINATE_PAGE_IDENT.fullmatch(identifier) or not any(character.isdigit() for character in identifier):
-            continue
-        word_center = ((x0 + x1) / 2, (y0 + y1) / 2)
-        node = min(centers, key=lambda candidate: (centers[candidate][0] - word_center[0]) ** 2 + (centers[candidate][1] - word_center[1]) ** 2)
-        if ((centers[node][0] - word_center[0]) ** 2 + (centers[node][1] - word_center[1]) ** 2) ** 0.5 <= 62:
-            labels.setdefault(node, set()).add(identifier)
-    node_labels = {node: next(iter(values)) for node, values in labels.items() if len(values) == 1}
-    edges = set()
-    for index in range(0, len(points), 2):
-        first, second = root(index), root(index + 1)
-        if first != second and first in node_labels and second in node_labels:
-            edges.add(tuple(sorted((node_labels[first], node_labels[second]))))
-    return tuple(ChartRouteEdge(*edge) for edge in sorted(edges))
-
-
 def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_ident: str | None) -> tuple[float | None, float | None, str | None, int | None]:
     """Read observable numeric fields from one database-coding table row."""
     values: list[str] = []
@@ -664,7 +609,6 @@ def _chart_to_payload(chart: ProcedureChart) -> dict[str, object]:
         "fix_coordinates": [point.__dict__ for point in chart.fix_coordinates],
         "source": chart.source.__dict__,
         "route_fixes": [fix.__dict__ for fix in chart.route_fixes],
-        "route_edges": [edge.__dict__ for edge in chart.route_edges],
     }
 
 
@@ -678,7 +622,6 @@ def _chart_from_payload(payload: dict[str, object]) -> ProcedureChart:
         fix_coordinates=tuple(ChartFixCoordinate(**item) for item in payload["fix_coordinates"]),
         source=SourceRef(**payload["source"]),
         route_fixes=tuple(ChartRouteFix(**item) for item in payload.get("route_fixes", [])),
-        route_edges=tuple(ChartRouteEdge(**item) for item in payload.get("route_edges", [])),
     )
 
 
@@ -873,7 +816,6 @@ def extract_airport_standard_procedure_charts(
     cache_dir: Path | None = None,
     *,
     include_vector_evidence: bool = False,
-    include_p_route_vector_evidence: bool = False,
 ) -> list[ProcedureChart]:
     """Extract index-declared SID/STAR pages as route-label evidence.
 
@@ -893,8 +835,7 @@ def extract_airport_standard_procedure_charts(
             continue
         pdf = airport_directory / f"{airport}-{page}.pdf"
         if pdf.is_file():
-            vector_evidence = include_vector_evidence or (include_p_route_vector_evidence and re.search(r"\(P\d{3}\)", chart_name.upper()) is not None)
-            if vector_evidence:
+            if include_vector_evidence:
                 charts.extend(_cached_extract(
                     pdf, airport, "standard-terminal-procedure", chart_name, cache_dir,
                     lambda path, code, kind, name: extract_approach_chart(
@@ -972,10 +913,7 @@ def extract_approach_chart(pdf: Path, airport: str, chart_type: str, chart_name:
             chart = _chart_from_text(pdf, airport, chart_type, chart_name, page_number, page.get_text(), file_hash)
             words = page.get_text("words")
             route_fixes = extract_positioned_route_fixes(words)
-            route_edges: tuple[ChartRouteEdge, ...] = ()
             if include_vector_evidence and chart_type == "instrument-approach-index":
                 route_fixes += extract_vector_route_fixes(words, page.get_drawings())
-            if include_vector_evidence and chart_type == "standard-terminal-procedure":
-                route_edges = extract_vector_route_edges(words, page.get_drawings())
-            result.append(replace(chart, route_fixes=tuple(dict.fromkeys(route_fixes)), route_edges=route_edges))
+            result.append(replace(chart, route_fixes=tuple(dict.fromkeys(route_fixes))))
     return result
