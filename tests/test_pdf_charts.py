@@ -191,6 +191,17 @@ def test_extracts_inline_database_leg_attributes_from_one_printed_row():
     ]
 
 
+def test_splits_multiple_printed_database_legs_in_one_row_before_reading_attributes():
+    evidence = extract_terminal_leg_evidence(
+        "RWY32 离场 TUNV-9W\nCA 324 2100 RNP1 DF AL507 R 3000 MAX230 RNP1"
+    )
+
+    assert [(item.leg_type, item.fix_ident, item.course_degrees, item.altitude_meters, item.turn_direction, item.speed_limit_knots) for item in evidence] == [
+        ("CA", None, 324.0, 2100.0, None, None),
+        ("DF", "AL507", None, 3000.0, "R", 230),
+    ]
+
+
 def test_extracts_fix_from_next_line_when_pdf_table_columns_are_separate():
     evidence = extract_terminal_leg_evidence("CF\nYK551\nRWY04 离场 P389-09D\nDF\nYK404\nTF\nP389")
 

@@ -462,15 +462,25 @@ def extract_vector_route_fixes(words: list[tuple[float, float, float, float, str
     return tuple(dict.fromkeys(result))
 
 
-def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_ident: str | None) -> tuple[float | None, float | None, str | None, int | None]:
+def _database_leg_attributes(
+    lines: list[str],
+    start: int,
+    leg_type: str,
+    fix_ident: str | None,
+    *,
+    inline_text: str | None = None,
+    read_following_rows: bool = True,
+) -> tuple[float | None, float | None, str | None, int | None]:
     """Read observable numeric fields from one database-coding table row."""
-    inline_values = lines[start].replace(",", " ").split()
+    inline_text = inline_text or lines[start]
+    inline_values = inline_text.replace(",", " ").split()
     values: list[str] = []
-    for line in lines[start + 1:]:
-        if _DATABASE_LEG.search(line) or _DATABASE_PROCEDURE.search(line):
-            break
-        if line:
-            values.append(line)
+    if read_following_rows:
+        for line in lines[start + 1:]:
+            if _DATABASE_LEG.search(line) or _DATABASE_PROCEDURE.search(line):
+                break
+            if line:
+                values.append(line)
     if fix_ident and values[:1] == [fix_ident]:
         values.pop(0)
     all_values = [*inline_values, *values]
@@ -490,7 +500,7 @@ def _database_leg_attributes(lines: list[str], start: int, leg_type: str, fix_id
         altitude = numeric[0]
     elif leg_type in {"HF", "HM"}:
         inline_turn = next((value for value in inline_values if value in {"L", "R"}), None)
-        inline_speed_match = re.search(r"\bMAX(\d{2,3})\b", lines[start], re.IGNORECASE)
+        inline_speed_match = re.search(r"\bMAX(\d{2,3})\b", inline_text, re.IGNORECASE)
         inline_numeric = [float(value) for value in inline_values if value.isdecimal()]
         course = inline_numeric[0] if inline_numeric else None
         altitude = inline_numeric[1] if len(inline_numeric) > 1 else (following_numeric[0] if following_numeric else None)
@@ -571,51 +581,40 @@ def extract_terminal_leg_evidence(text: str) -> tuple[ChartTerminalLeg, ...]:
                 split_combined_approach_missed = False
             pending_rows = []
             continue
-        rf_legs = list(_DATABASE_RF_LEG.finditer(line))
-        if len(rf_legs) > 1:
-            for index, rf_leg in enumerate(rf_legs):
-                end = rf_legs[index + 1].start() if index + 1 < len(rf_legs) else len(line)
-                fragment = line[rf_leg.start():end]
-                tokens = fragment.replace(",", " ").split()
-                turn = next((token for token in tokens if token in {"L", "R"}), None)
-                speed_match = re.search(r"\bMAX(\d{2,3})\b", fragment, re.IGNORECASE)
-                row = ("RF", rf_leg["fix"], fragment, None, None, turn,
-                       int(speed_match.group(1)) if speed_match else None, rf_leg["center"])
-                if active_label:
-                    active_rows.append(row)
-                else:
-                    pending_rows.append(row)
+        legs = list(_DATABASE_LEG.finditer(line))
+        if not legs:
             continue
-        rf_leg = _DATABASE_RF_LEG.search(line)
-        leg = rf_leg or _DATABASE_LEG.search(line)
-        if not leg:
-            continue
-        next_line = lines[line_number + 1] if line_number + 1 < len(lines) else ""
-        leg_type = "RF" if rf_leg else leg["leg_type"]
-        fix_ident = leg["fix"] or (next_line if _COORDINATE_PAGE_IDENT.fullmatch(next_line) and next_line not in _IGNORED else None)
-        if split_combined_approach_missed and active_rows and leg_type in {"CA", "CF", "DF"}:
-            # CAAC combines these two labelled phases under one title.  The
-            # first course/direct leg after the printed approach rows starts
-            # the following explicitly named missed-approach portion.
-            flush()
-            active_kind = "\u590d\u98de"
-            active_transition = ""
-            split_combined_approach_missed = False
-        row = (leg_type, fix_ident, line if leg["fix"] else f"{line} {next_line}".rstrip())
-        course, altitude, turn, speed = _database_leg_attributes(lines, line_number, leg_type, fix_ident)
-        if rf_leg:
-            tokens = line.replace(",", " ").split()
-            turn = turn or next((token for token in tokens if token in {"L", "R"}), None)
-            speed_match = re.search(r"\bMAX(\d{2,3})\b", line, re.IGNORECASE)
-            speed = speed or (int(speed_match.group(1)) if speed_match else None)
-        row = (*row, course, altitude, turn, speed, rf_leg["center"] if rf_leg else None)
-        if (leg_type in {"CF", "CA"} and active_rows and active_rows[-1][0] != "CA"
-                and not active_label.startswith("R")):
-            pending_rows.append(row)
-        elif active_label:
-            active_rows.append(row)
-        else:
-            pending_rows.append(row)
+        rf_by_start = {match.start(): match for match in _DATABASE_RF_LEG.finditer(line)}
+        for index, leg in enumerate(legs):
+            end = legs[index + 1].start() if index + 1 < len(legs) else len(line)
+            fragment = line[leg.start():end].strip()
+            rf_leg = rf_by_start.get(leg.start())
+            next_line = lines[line_number + 1] if index == len(legs) - 1 and line_number + 1 < len(lines) else ""
+            leg_type = "RF" if rf_leg else leg["leg_type"]
+            fix_ident = (rf_leg["fix"] if rf_leg else leg["fix"]) or (
+                next_line if _COORDINATE_PAGE_IDENT.fullmatch(next_line) and next_line not in _IGNORED else None
+            )
+            if split_combined_approach_missed and active_rows and leg_type in {"CA", "CF", "DF"}:
+                # CAAC combines these two labelled phases under one title.  The
+                # first course/direct leg after the printed approach rows starts
+                # the following explicitly named missed-approach portion.
+                flush()
+                active_kind = "\u590d\u98de"
+                active_transition = ""
+                split_combined_approach_missed = False
+            raw = fragment if leg["fix"] or rf_leg else f"{fragment} {next_line}".rstrip()
+            course, altitude, turn, speed = _database_leg_attributes(
+                lines, line_number, leg_type, fix_ident, inline_text=fragment,
+                read_following_rows=len(legs) == 1,
+            )
+            row = (* (leg_type, fix_ident, raw), course, altitude, turn, speed, rf_leg["center"] if rf_leg else None)
+            if (leg_type in {"CF", "CA"} and active_rows and active_rows[-1][0] != "CA"
+                    and not active_label.startswith("R")):
+                pending_rows.append(row)
+            elif active_label:
+                active_rows.append(row)
+            else:
+                pending_rows.append(row)
     flush()
     return tuple(result)
 
