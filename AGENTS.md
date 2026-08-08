@@ -28,7 +28,7 @@
 
 - 适用范围：同一机场、跑道和数据库编码名称可匹配多张仪表进近图的 IAP。名称与跑道不足以区分 ILS、RNP 等不同图页，但主进近最后固定点是数据库编码表中可观察的来源事实。
 - 解决方式：仍先以名称和跑道筛选；多图候选时，只有当前主进近最后固定点在其中唯一一张图的原生 `MAPT` 标注中出现，才选择该图。零张或多张 `MAPT` 命中继续拒绝。`test_iap_chart_roles_selects_unique_chart_with_explicit_final_mapt` 固化该规则；不读取或复制参考记录。
-- 验证：候选 `output/candidate-2608-mapt-chart-disambiguation` 通过 `integrity_check`，`Terminals` 为 101540/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 843478/845147；IAP 业务键缺口从 463 降至 251。发现一个额外键 `ZPCW/R23-Z`：`ZPCW-5P-2.pdf` 明确标为 RNP z RWY23 且 `CY600` 为 `MAPT`，参考只有 `R23-X/Y`。该后缀映射来源尚未解释，不能按机场或参考特例回填；候选 SHA-256 `f34009672c88393b58fb5b8b3bce5497613a41e40c949ba0c8b15c708a4ac420` 不等于参考，禁止部署或发布。
+- 验证：候选 `output/candidate-2608-mapt-chart-disambiguation` 通过 `integrity_check`，`Terminals` 为 101540/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 843478/845147；IAP 业务键缺口从 463 降至 251。发现一个额外键 `ZPCW/R23-Z`：`ZPCW-5P-2.pdf` 明确标为 RNP z RWY23 且 `CY600` 为 `MAPT`，参考只有 `R23-X/Y`。只读航段差分显示其 `R23-Z` 几何对应参考 `R23-Y`，而来源 `R23-Y` 对应 `R23-X`；PDF 尚未找到可解释这种置换的命名证据，不能按机场或参考特例回填。渲染 `ZBAD-0C-18.pdf` 还确认 RWY35R 编码表确实只到 `AD605`，其仪表图 `MAPT AD602` 不在编码表中，不能把图上 MAPT 当作缺失的编码航段。候选 SHA-256 `f34009672c88393b58fb5b8b3bce5497613a41e40c949ba0c8b15c708a4ac420` 不等于参考，禁止部署或发布。
 
 ## 2026-08-08 无连字符程序标签
 
@@ -56,7 +56,11 @@ PDF/CSV 是唯一转换输入。图像模型只能用于抽样验证，不能进
 
 ## Git 状态
 
-截至本交接文件创建时，当前分支为 `main`，最新提交 `67aa914 fix: normalize Fenix airport transition heights`，本地相对 `origin/main` **ahead 1**，尚未成功推送。此前以下提交已推送：
+截至 2026-08-08 当前分支为 `main`，最新提交 `47be081 fix: disambiguate IAP charts by explicit MAPT` 已推送到 `origin/main`，工作树干净。近期已推送提交包括：
+
+- `47be081 fix: disambiguate IAP charts by explicit MAPT`
+- `7660b14 docs: record same-page shared IAP sections`
+- `c46ed4a fix: associate same-page shared IAP sections`
 
 - `e32bcf9 fix: match reference ILS crossing height`
 - `a3213fe fix: round Fenix DME elevation upward`
@@ -120,12 +124,11 @@ python -m pytest -q --basetemp output\pytest-<unique> -p no:cacheprovider
 
 ## 当前优先顺序
 
-1. 推送 `67aa914`，确认工作树干净。
-2. 使用新源模型重新生成诊断候选，确认机场坐标和过渡高度/层差异减少，并更新数字诊断。
-3. 对机场名称、`SpeedLimitAltitude`、跑道阈值/航向进行来源优先的差分研究；只实现可复用、可测试的规则。
-4. 完成 ILS 与 Markers、跑道、机场、程序来源投影后，再把完整中国机场域替换事务接入转换，保留全球官方基线。
-5. 持续扩展数据库编码表和终端 PDF 程序解析，减少 7969 个拒绝程序；无法可靠解析的程序必须拒绝而非静默沿用旧官方程序。
-6. 每轮运行完整候选、`integrity_check`、schema/表级/记录级差分。只有所有表内容、SQLite 物理布局、外部元数据与参考逐字节一致，才能认为该阶段完成；在此之前禁止部署与发布。
+1. 继续从 PDF 标题、有效日期、编码表及图表索引推导 IAP 变体的通用命名规则，解释 `ZPCW/R23-Z` 与参考 X/Y 的来源置换，禁止参考回填。
+2. 对机场名称、`SpeedLimitAltitude`、跑道阈值/航向进行来源优先的差分研究；只实现可复用、可测试的规则。
+3. 完成 ILS 与 Markers、跑道、机场、程序来源投影后，再把完整中国机场域替换事务接入转换，保留全球官方基线。
+4. 持续扩展数据库编码表和终端 PDF 程序解析；编码表没有 MAPT 航段时不得用仪表图虚构该航段。
+5. 每轮运行完整候选、`integrity_check`、schema/表级/记录级差分。只有所有表内容、SQLite 物理布局、外部元数据与参考逐字节一致，才能认为该阶段完成；在此之前禁止部署与发布。
 
 ## 安全约束
 
