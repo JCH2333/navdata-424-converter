@@ -151,6 +151,7 @@ class ProcedureChart:
     fix_coordinates: tuple["ChartFixCoordinate", ...]
     source: SourceRef
     route_fixes: tuple["ChartRouteFix", ...] = ()
+    standard_routes: tuple["ChartStandardProcedureRoute", ...] = ()
 
 
 @dataclass(frozen=True)
@@ -185,6 +186,15 @@ class ChartRouteFix:
 
     ident: str
     role: str
+
+
+@dataclass(frozen=True)
+class ChartStandardProcedureRoute:
+    """One printed standard-procedure route-table entry."""
+
+    procedure_label: str
+    navigation_code: str
+    fixes: tuple[str, ...]
 
 
 @dataclass(frozen=True)

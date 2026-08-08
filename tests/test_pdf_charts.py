@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, ProcedureChart, SourceRef
-from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, _positioned_database_text, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
+from navdata_converter.model import ChartFixCoordinate, ChartRouteFix, ChartStandardProcedureRoute, ChartTerminalLeg, ProcedureChart, SourceRef
+from navdata_converter.pdf_charts import _PROCEDURE, _RUNWAY, _WAYPOINT, _cached_extract, _chart_from_text, _chart_rows, _positioned_database_text, _standard_procedure_routes, approach_procedure_name_candidates, extract_ad219_ils, extract_airport_ad219_ils, extract_airport_approach_charts, extract_airport_database_charts, extract_airport_standard_procedure_charts, extract_coordinate_page_points, extract_fix_coordinates, extract_positioned_coordinate_page_points, extract_positioned_route_fixes, extract_terminal_leg_evidence, extract_vector_route_fixes
 
 
 def test_extracts_observable_procedure_and_fix_labels():
@@ -11,6 +11,20 @@ def test_extracts_observable_procedure_and_fix_labels():
     assert _PROCEDURE.findall(text) == ["KAKAT-01D", "TGO-01D"]
     assert {item for item in _WAYPOINT.findall(text) if item not in {"RNP"}} >= {"KAKAT", "CHF"}
     assert _RUNWAY.findall("RWY03 RWY 21L") == ["03", "21L"]
+
+
+def test_extracts_standard_arrival_route_table_without_inferring_geometry():
+    text = """
+    跑道 进场程序代号 导航数据代号 航迹简述
+    P439-A1 P439A1 P439-CZ823-CZ700
+    01
+    P439-C3 P439C3 P439-CZ823-CZ622-CZ621
+    """
+
+    assert [(route.procedure_label, route.navigation_code, route.fixes) for route in _standard_procedure_routes(text)] == [
+        ("P439-A1", "P439A1", ("P439", "CZ823", "CZ700")),
+        ("P439-C3", "P439C3", ("P439", "CZ823", "CZ622", "CZ621")),
+    ]
 
 
 def test_extracts_only_printed_ad219_localizer_glide_path_and_dme_fields():
@@ -520,6 +534,7 @@ def test_pdf_evidence_cache_restores_every_chart_field_without_reopening_pdf(tmp
         "ZYYK", pdf.name, 1, "terminal-database-coding", "database", "text-hash", ("BM-09D",), ("04",), ("YK551",),
         (ChartTerminalLeg("BM-09D", "04", "CF", "YK551", "CF YK551", "departure", 37.0, 900.0, "L", 220),),
         (ChartFixCoordinate("YK551", 40.5, 122.4, "N40 30 E122 24"),), source,
+        standard_routes=(ChartStandardProcedureRoute("YK551-A1", "YK551A1", ("YK551", "YK552")),),
     )
     calls = 0
 

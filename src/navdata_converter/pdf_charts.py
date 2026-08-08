@@ -19,10 +19,10 @@ from typing import Callable
 import pymupdf
 from pypdf import PdfReader
 
-from .model import ChartFixCoordinate, ChartRouteFix, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
+from .model import ChartFixCoordinate, ChartRouteFix, ChartStandardProcedureRoute, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 22
+_EVIDENCE_CACHE_VERSION = 23
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -60,6 +60,11 @@ _DATABASE_APPROACH_PROCEDURE = re.compile(
 _DATABASE_LEG = re.compile(r"\b(?P<leg_type>CF|DF|TF|CA|IF|HM|RF|AF|FA|FC|FD|FM|HA|HF|PI|VI|VM)\b(?:\s+(?P<fix>[A-Z][A-Z0-9]{0,5}))?")
 _DATABASE_RF_LEG = re.compile(r"\bRF\s*\[\s*(?P<center>[A-Z][A-Z0-9]{0,5})\s*,\s*\d+(?:\.\d+)?\s*\]\s*(?P<fix>[A-Z][A-Z0-9]{0,5})?")
 _DATABASE_SPEED = re.compile(r"^MAX(?P<speed>\d{2,3})$", re.IGNORECASE)
+_STANDARD_ROUTE = re.compile(
+    r"\b(?P<label>[A-Z][A-Z0-9]{1,5}-(?:\d{1,2}[A-Z]{1,2}|[A-Z]{1,2}\d{1,2}))\s+"
+    r"(?P<code>[A-Z][A-Z0-9]{2,5})\s+"
+    r"(?P<route>[A-Z][A-Z0-9]{1,5}(?:-[A-Z][A-Z0-9]{1,5})+)\b"
+)
 _COORDINATE_PAGE_IDENT = re.compile(r"^[A-Z][A-Z0-9]{0,5}$")
 _DMS_COORDINATE = re.compile(
     r"N\s*(?P<lat_deg>\d{2})\D+?(?P<lat_min>\d{2})\D+?(?P<lat_sec>\d{2}(?:\.\d+)?)[\"']?\s*"
@@ -324,6 +329,19 @@ def _positioned_database_text(words: list[tuple[float, float, float, float, str,
         else:
             rows.append([(x0, y0, text)])
     return "\n".join(" ".join(text for _, _, text in sorted(row)) for row in rows)
+
+
+def _standard_procedure_routes(text: str) -> tuple[ChartStandardProcedureRoute, ...]:
+    """Read only fully printed route-table entries from a standard SID/STAR plate."""
+    routes = []
+    for match in _STANDARD_ROUTE.finditer(text.upper()):
+        fixes = tuple(match["route"].split("-"))
+        version = match["label"].rsplit("-", 1)[1]
+        # The navigation-data code retains the printed version suffix.  Without
+        # it, adjacent performance-table text can mimic the three columns.
+        if len(fixes) >= 2 and fixes[0] == match["label"].split("-", 1)[0] and match["code"].endswith(version):
+            routes.append(ChartStandardProcedureRoute(match["label"], match["code"], fixes))
+    return tuple(dict.fromkeys(routes))
 
 
 def extract_positioned_route_fixes(words: list[tuple[float, float, float, float, str, int, int, int]]) -> tuple[ChartRouteFix, ...]:
@@ -609,6 +627,7 @@ def _chart_to_payload(chart: ProcedureChart) -> dict[str, object]:
         "fix_coordinates": [point.__dict__ for point in chart.fix_coordinates],
         "source": chart.source.__dict__,
         "route_fixes": [fix.__dict__ for fix in chart.route_fixes],
+        "standard_routes": [route.__dict__ for route in chart.standard_routes],
     }
 
 
@@ -622,6 +641,10 @@ def _chart_from_payload(payload: dict[str, object]) -> ProcedureChart:
         fix_coordinates=tuple(ChartFixCoordinate(**item) for item in payload["fix_coordinates"]),
         source=SourceRef(**payload["source"]),
         route_fixes=tuple(ChartRouteFix(**item) for item in payload.get("route_fixes", [])),
+        standard_routes=tuple(
+            ChartStandardProcedureRoute(str(item["procedure_label"]), str(item["navigation_code"]), tuple(item["fixes"]))
+            for item in payload.get("standard_routes", [])
+        ),
     )
 
 
@@ -915,5 +938,6 @@ def extract_approach_chart(pdf: Path, airport: str, chart_type: str, chart_name:
             route_fixes = extract_positioned_route_fixes(words)
             if include_vector_evidence and chart_type == "instrument-approach-index":
                 route_fixes += extract_vector_route_fixes(words, page.get_drawings())
-            result.append(replace(chart, route_fixes=tuple(dict.fromkeys(route_fixes))))
+            standard_routes = _standard_procedure_routes(_positioned_database_text(words)) if chart_type == "standard-terminal-procedure" else ()
+            result.append(replace(chart, route_fixes=tuple(dict.fromkeys(route_fixes)), standard_routes=standard_routes))
     return result

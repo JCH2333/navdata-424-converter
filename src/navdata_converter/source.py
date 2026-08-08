@@ -374,6 +374,76 @@ def _build_database_procedure_segments(model: NavModel) -> None:
             active_legs.append(leg)
         flush()
 
+    _replace_standard_p_arrivals(model)
+
+
+def _replace_standard_p_arrivals(model: NavModel) -> None:
+    """Replace a uniquely identified P-route's merged coding-table tail.
+
+    The standard arrival plate prints the Fenix navigation-data code and its
+    complete route.  Its coding-table counterpart carries the ARINC leg types,
+    but can concatenate two chart branches under one source label.  A rewrite
+    is admitted only when the plate route, version conversion and a complete
+    source leg-template all resolve uniquely within one airport.
+    """
+    route_entries = [
+        (chart.airport, chart.runways, route)
+        for chart in model.procedure_charts
+        if chart.chart_type == "standard-terminal-procedure"
+        for route in chart.standard_routes
+    ]
+    replacements: dict[int, ProcedureSegment] = {}
+    for index, segment in enumerate(model.procedure_segments):
+        if segment.kind != "进场":
+            continue
+        fixed_legs = [leg for leg in segment.legs if leg.fix_ident]
+        if not fixed_legs:
+            continue
+        version = re.search(r"-(?P<number>\d{1,2})(?P<letter>[A-Z]{1,2})$", segment.label)
+        if version is None:
+            continue
+        first_fix = fixed_legs[0].fix_ident
+        expected_version = f"{version['letter']}{version['number']}"
+        candidates = [
+            route for airport, runways, route in route_entries
+            if airport == segment.airport
+            and segment.runway in runways
+            and route.procedure_label == f"{first_fix}-{expected_version}"
+            and route.fixes[0] == first_fix
+        ]
+        if len(candidates) != 1:
+            continue
+        route = candidates[0]
+        templates = []
+        for template in model.procedure_segments:
+            if template.airport != segment.airport:
+                continue
+            fixes = [leg.fix_ident for leg in template.legs if leg.fix_ident]
+            for start in range(len(fixes) - len(route.fixes) + 1):
+                if tuple(fixes[start:start + len(route.fixes)]) != route.fixes:
+                    continue
+                selected = []
+                seen = 0
+                for leg in template.legs:
+                    if leg.fix_ident:
+                        if start <= seen < start + len(route.fixes):
+                            selected.append(leg)
+                        seen += 1
+                if len(selected) == len(route.fixes):
+                    templates.append(tuple(selected))
+        distinct_templates = {tuple((leg.leg_type, leg.fix_ident, leg.center_ident, leg.course_degrees, leg.altitude_meters, leg.turn_direction, leg.speed_limit_knots) for leg in template) for template in templates}
+        if len(distinct_templates) != 1:
+            continue
+        selected = templates[0]
+        legs = tuple(replace(
+            leg, procedure_label=route.navigation_code, runway=segment.runway, procedure_kind=segment.kind,
+        ) for leg in selected)
+        replacements[index] = ProcedureSegment(
+            segment.airport, route.navigation_code, segment.kind, segment.runway, segment.transition, legs, segment.source,
+        )
+    for index, replacement in replacements.items():
+        model.procedure_segments[index] = replacement
+
 
 def _load_terminal_approach_charts(model: NavModel, pdf_cache: Path | None = None) -> None:
     """Retain instrument-approach index pages before leg decoding exists."""

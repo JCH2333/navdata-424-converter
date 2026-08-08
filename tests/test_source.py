@@ -1,4 +1,4 @@
-from navdata_converter.model import ChartFixCoordinate, ChartTerminalLeg, Ils, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
+from navdata_converter.model import ChartFixCoordinate, ChartStandardProcedureRoute, ChartTerminalLeg, Ils, NavModel, ProcedureChart, SourceRef, TerminalWaypoint
 import pytest
 
 from navdata_converter.source import _airport_altitude_feet, _airport_pdf_english_name, _build_database_procedure_segments, _feet, _load_terminal_coordinate_pages, _load_terminal_landing_aids, _reject_unparsed_charts, _retain_database_referenced_terminal_waypoints, _rows, _surface, _validate_pdf_cache, navaid_country, parse_dms, romanize_name, waypoint_country
@@ -198,6 +198,34 @@ def test_database_chart_rows_form_ordered_procedure_segments(tmp_path):
         ("R29", "进近", "", ["HZ407"]),
         ("R29", "复飞", "", ["HZ412"]),
     ]
+
+
+def test_standard_route_table_replaces_only_a_uniquely_templated_p_arrival(tmp_path):
+    source = SourceRef("Terminal/ZBCZ/ZBCZ-0C-2.pdf", 1, 1, "database")
+    standard_source = SourceRef("Terminal/ZBCZ/ZBCZ-4P-1.pdf", 1, 1, "standard")
+    database = ProcedureChart(
+        "ZBCZ", "ZBCZ-0C-2.pdf", 1, "terminal-database-coding", "database", "text", (), (), (), (
+            ChartTerminalLeg("PADN-1A", "01", "IF", "P439", "IF P439", "进场"),
+            ChartTerminalLeg("PADN-1A", "01", "TF", "CZ823", "TF CZ823", "进场"),
+            ChartTerminalLeg("PADN-1A", "01", "TF", "CZ622", "TF CZ622", "进场"),
+            ChartTerminalLeg("ANPG-9M", "19", "IF", "P439", "IF P439", "离场"),
+            ChartTerminalLeg("ANPG-9M", "19", "TF", "CZ823", "TF CZ823", "离场"),
+            ChartTerminalLeg("ANPG-9M", "19", "TF", "CZ700", "TF CZ700", "离场"),
+        ), (), source,
+    )
+    standard = ProcedureChart(
+        "ZBCZ", "ZBCZ-4P-1.pdf", 1, "standard-terminal-procedure", "STAR", "text", (), ("01",), (), (), (), standard_source,
+        standard_routes=(ChartStandardProcedureRoute("P439-A1", "P439A1", ("P439", "CZ823", "CZ700")),),
+    )
+    model = NavModel(tmp_path, procedure_charts=[database, standard])
+
+    _build_database_procedure_segments(model)
+
+    replacement = next(segment for segment in model.procedure_segments if segment.label == "P439A1")
+    assert (replacement.kind, replacement.runway, [leg.leg_type for leg in replacement.legs], [leg.fix_ident for leg in replacement.legs]) == (
+        "进场", "01", ["IF", "TF", "TF"], ["P439", "CZ823", "CZ700"],
+    )
+    assert not any(segment.label == "PADN-1A" for segment in model.procedure_segments)
 
 
 def test_terminal_approach_charts_are_retained_as_index_evidence(monkeypatch, tmp_path):
