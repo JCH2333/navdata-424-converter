@@ -657,6 +657,16 @@ def _insert_terminal_procedures(connection: sqlite3.Connection, model: NavModel)
     }
 
 
+def _iap_matching_charts(model: NavModel, segment: ProcedureSegment):
+    return [
+        chart for chart in model.procedure_charts
+        if chart.airport == segment.airport
+        and chart.chart_type == "instrument-approach-index"
+        and segment.runway in chart.runways
+        and segment.label in approach_procedure_name_candidates(chart.chart_name, chart.runways, segment.airport)
+    ]
+
+
 def _iap_chart_roles(model: NavModel, segment: ProcedureSegment) -> dict[str, set[str]]:
     """Return explicit IF/FAF/MAPT labels for one source-identifiable approach chart.
 
@@ -664,13 +674,7 @@ def _iap_chart_roles(model: NavModel, segment: ProcedureSegment) -> dict[str, se
     for the same runway.  The final printed main-approach fix is sufficient
     evidence only when exactly one of those charts explicitly calls it MAPT.
     """
-    charts = [
-        chart for chart in model.procedure_charts
-        if chart.airport == segment.airport
-        and chart.chart_type == "instrument-approach-index"
-        and segment.runway in chart.runways
-        and segment.label in approach_procedure_name_candidates(chart.chart_name, chart.runways, segment.airport)
-    ]
+    charts = _iap_matching_charts(model, segment)
     if len(charts) > 1 and segment.legs and segment.legs[-1].fix_ident:
         map_fix = segment.legs[-1].fix_ident
         map_charts = [
@@ -685,6 +689,24 @@ def _iap_chart_roles(model: NavModel, segment: ProcedureSegment) -> dict[str, se
     for route_fix in charts[0].route_fixes:
         roles.setdefault(route_fix.ident, set()).add(route_fix.role)
     return roles
+
+
+def _split_iap_at_explicit_runway_map(model: NavModel, segment: ProcedureSegment) -> tuple[tuple[ChartTerminalLeg, ...], tuple[ChartTerminalLeg, ...]] | None:
+    """Split a combined coding section only at a source-printed runway MAP.
+
+    Some RNP AR coding tables place the missed route after the runway waypoint
+    under one approach heading.  The split is permitted only where its unique
+    matching approach page explicitly prints a missed-approach section.
+    """
+    charts = _iap_matching_charts(model, segment)
+    if len(charts) != 1 or not charts[0].has_missed_approach:
+        return None
+    pattern = re.compile(rf"^RW{re.escape(segment.runway)}[LRC]?$")
+    candidates = [index for index, leg in enumerate(segment.legs) if leg.fix_ident and pattern.fullmatch(leg.fix_ident.upper())]
+    if len(candidates) != 1 or candidates[0] == len(segment.legs) - 1:
+        return None
+    boundary = candidates[0] + 1
+    return segment.legs[:boundary], segment.legs[boundary:]
 
 
 def _iap_sections(
@@ -750,9 +772,13 @@ def _insert_iap_procedures(connection: sqlite3.Connection, model: NavModel) -> d
         try:
             if len(primary) != 1 or not primary[0].legs:
                 raise ConversionBlocked("IAP requires exactly one non-empty main-approach section")
-            roles = _iap_chart_roles(model, primary[0])
-            map_leg = primary[0].legs[-1]
-            if map_leg.fix_ident is None or "MAPT" not in roles.get(map_leg.fix_ident, set()):
+            split = _split_iap_at_explicit_runway_map(model, primary[0])
+            primary_legs = primary[0].legs if split is None else split[0]
+            missed = missed if split is None else [replace(primary[0], kind="复飞", legs=split[1]), *missed]
+            main_segment = primary[0] if split is None else replace(primary[0], legs=primary_legs)
+            roles = _iap_chart_roles(model, main_segment)
+            map_leg = primary_legs[-1]
+            if map_leg.fix_ident is None or ("MAPT" not in roles.get(map_leg.fix_ident, set()) and split is None):
                 raise ConversionBlocked("IAP main approach does not end at an explicit MAPT fix")
             airport_id = airport_ids.get(airport)
             runway_id = runway_ids.get((airport_id, runway)) if airport_id is not None else None
@@ -780,7 +806,7 @@ def _insert_iap_procedures(connection: sqlite3.Connection, model: NavModel) -> d
             for transition in transitions:
                 for index, leg in enumerate(transition.legs):
                     append_leg(leg, transition.transition, "E A" if index == 0 else "EE B")
-            for index, leg in enumerate(primary[0].legs):
+            for index, leg in enumerate(primary_legs):
                 if index == 0:
                     append_leg(leg, None, "EI")
                 else:

@@ -152,6 +152,7 @@ class ProcedureChart:
     source: SourceRef
     route_fixes: tuple["ChartRouteFix", ...] = ()
     standard_routes: tuple["ChartStandardProcedureRoute", ...] = ()
+    has_missed_approach: bool = False
 
 
 @dataclass(frozen=True)

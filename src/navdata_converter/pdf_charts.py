@@ -22,7 +22,7 @@ from pypdf import PdfReader
 from .model import ChartFixCoordinate, ChartRouteFix, ChartStandardProcedureRoute, ChartTerminalLeg, Ils, ProcedureChart, SourceRef
 
 
-_EVIDENCE_CACHE_VERSION = 27
+_EVIDENCE_CACHE_VERSION = 28
 
 
 _PROCEDURE = re.compile(r"\b([A-Z0-9]{2,6}-\d{2}[AD])\b")
@@ -645,6 +645,7 @@ def _chart_to_payload(chart: ProcedureChart) -> dict[str, object]:
         "source": chart.source.__dict__,
         "route_fixes": [fix.__dict__ for fix in chart.route_fixes],
         "standard_routes": [route.__dict__ for route in chart.standard_routes],
+        "has_missed_approach": chart.has_missed_approach,
     }
 
 
@@ -662,6 +663,7 @@ def _chart_from_payload(payload: dict[str, object]) -> ProcedureChart:
             ChartStandardProcedureRoute(str(item["procedure_label"]), str(item["navigation_code"]), tuple(item["fixes"]))
             for item in payload.get("standard_routes", [])
         ),
+        has_missed_approach=bool(payload.get("has_missed_approach", False)),
     )
 
 
@@ -713,6 +715,7 @@ def _chart_from_text(pdf: Path, airport: str, chart_type: str, chart_name: str, 
         terminal_legs=extract_terminal_leg_evidence(text),
         fix_coordinates=extract_fix_coordinates(text) + coordinates,
         source=SourceRef(str(pdf), page_number, page_number, file_hash),
+        has_missed_approach="复飞程序" in re.sub(r"\s+", "", text),
     )
 
 

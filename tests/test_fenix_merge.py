@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_chart_roles, _iap_sections, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _terminal_waypoint_resolutions, airport_speed_limit_altitude, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_chart_roles, _iap_sections, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _split_iap_at_explicit_runway_map, _terminal_waypoint_resolutions, airport_speed_limit_altitude, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
 from navdata_converter.model import Airport, ChartRouteFix, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureChart, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -306,6 +306,20 @@ def test_iap_chart_roles_selects_unique_chart_with_explicit_final_mapt():
     roles = _iap_chart_roles(NavModel(Path("."), procedure_charts=[ils, rnp]), segment)
 
     assert roles == {"FINAL": {"MAPT"}}
+
+
+def test_splits_combined_iap_only_at_unique_runway_fix_with_explicit_missed_chart():
+    source = SourceRef("Terminal/ZYYY/ZYYY-4Z01.pdf", page=1, sha256="hash")
+    segment = ProcedureSegment("ZYYY", "R01", "进近", "01", "", (
+        ChartTerminalLeg("R01", "01", "IF", "START", "IF START", "进近"),
+        ChartTerminalLeg("R01", "01", "TF", "RW01C", "TF RW01C", "进近"),
+        ChartTerminalLeg("R01", "01", "TF", "MISSED", "TF MISSED", "进近"),
+    ), source)
+    chart = ProcedureChart("ZYYY", "ZYYY-9A.pdf", 1, "instrument-approach-index", "RNP RWY01(AR)", "text", (), ("01",), (), (), (), source, has_missed_approach=True)
+
+    split = _split_iap_at_explicit_runway_map(NavModel(Path("."), procedure_charts=[chart]), segment)
+
+    assert split == (segment.legs[:2], segment.legs[2:])
 
 
 def test_inserts_fully_resolved_source_sid_with_paired_extension_legs(tmp_path):

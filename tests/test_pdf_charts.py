@@ -126,6 +126,12 @@ def test_expands_slash_separated_runways_in_approach_chart_title():
     assert chart.runways == ("16", "34")
 
 
+def test_retains_explicit_missed_approach_heading_from_chart_text():
+    chart = _chart_from_text(Path("ZSWY-9B.pdf"), "ZSWY", "instrument-approach-index", "RNP RWY21(AR)", 1, "复飞程序", "hash")
+
+    assert chart.has_missed_approach is True
+
+
 def test_derives_conservative_fenix_approach_name_candidates_from_chart_title():
     assert approach_procedure_name_candidates("RNAV ILS/DME z RWY01", ("01",)) == ("I01", "I01-Z")
     assert approach_procedure_name_candidates("RNP x RWY18L(AR)", ("18L",)) == ("R18L", "R18L-X")
