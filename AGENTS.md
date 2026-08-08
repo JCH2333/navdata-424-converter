@@ -12,6 +12,12 @@
 - 解决方式：仅当标题显式为“进近及复飞”时，将其作为主进近开始；在已有主进近行后，第一个 `CA/CF/DF` 行切换为同一显式标题下的复飞段。`test_splits_explicit_combined_approach_and_missed_heading_at_first_missed_leg` 终端跳转固化此版式，PDF 证据缓存版本升为 17。
 - 验证：完整重新解析后，程序分段从 7216 增至 7588，数据库编码航段从 38882 增至 39241。候选 `output/candidate-2608-combined-approach` 通过 `integrity_check`，`Terminals` 为 101277/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 840146/845147；IAP 业务键缺口为 513，仍无新增的非参考 IAP 键。SHA-256 `d765a6fddfd887d18b321e130251e17b3d5f2f6483ee8685c1e4639dd3a20552` 仍不等于参考，禁止部署或发布。
 
+## 2026-08-08 空格分隔的进近变体
+
+- 适用范围：Fenix 2608 NAIP 数据库编码 PDF。`Terminal/ZBAA/ZBAA-0C-20.pdf` 使用 `RWY01 进近 z` 和 `RWY01 进近 y`，字母为小写且与“进近”以空格分隔，不是另一种 `-变体` 拼写。旧规则因此将两条不同的主进近段合并为 `R01`。
+- 解决方式：进近标题变体的连字符可选、匹配不区分大小写，写入前仍归一为大写 `-W/-X/-Y/-Z`。`test_preserves_whitespace_separated_approach_variant_from_database_heading` 固定 `RWY01 进近 z -> R01-Z`。缓存版本升为 18。
+- 验证：完整重新解析后，程序分段为 7671。候选 `output/candidate-2608-approach-variants` 通过 `integrity_check`，`Terminals` 为 101327/101618，`TerminalLegs` 和 `TerminalLegsEx` 均为 840588/845147；IAP 业务键缺口为 463，仍无新增的非参考 IAP 键。SHA-256 `166bda4591a5e71546f65ac1c2328a77bde2b73b5be8b2b7e5df377bdd50cc28` 仍不等于参考，禁止部署或发布。
+
 ## 2026-08-08 无连字符程序标签
 
 - 适用范围：Fenix 2608 NAIP 终端数据库编码 PDF。证据：`Terminal/ZBAA/ZBAA-0C-01.pdf` 的原生文字层打印 `RWY36L/36R 离场IDKE5Y`，旧正则只接受 `IDKE-5Y`，因而丢弃整页 25 条可观察航段。这是完整的原生文字层，不需 OCR 或参考库回填。
