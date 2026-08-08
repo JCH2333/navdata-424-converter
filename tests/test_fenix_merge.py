@@ -122,6 +122,48 @@ def test_inserts_source_airway_endpoint_only_when_its_location_is_absent(tmp_pat
     assert connection.execute("SELECT Ident, Country, ID FROM WaypointLookup ORDER BY ID").fetchall() == [("NEW", "CN", 2), ("EXISTS", "CN", 3), ("OTHER", "CN", 4)]
 
 
+def test_airway_projection_prefers_its_source_coordinate_phase(tmp_path):
+    connection = sqlite3.connect(tmp_path / "airway-source-phase.db3")
+    connection.executescript("""
+        CREATE TABLE Airways (ID INTEGER PRIMARY KEY, Ident TEXT NOT NULL);
+        CREATE TABLE AirwayLegs (ID INTEGER PRIMARY KEY, AirwayID INTEGER, Level TEXT, Waypoint1ID INTEGER, Waypoint2ID INTEGER, IsStart INTEGER NOT NULL, IsEnd INTEGER NOT NULL);
+        CREATE TABLE Waypoints (ID INTEGER PRIMARY KEY, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
+        CREATE TABLE WaypointLookup (Ident TEXT, Country TEXT, ID INTEGER);
+        INSERT INTO Waypoints VALUES (1, 'START', 0, 'BASE', 30.0, 120.0, NULL);
+        INSERT INTO Waypoints VALUES (2, 'END', 0, 'BASE', 31.0, 121.0, NULL);
+    """)
+    model = NavModel(tmp_path, airway_legs=[
+        AirwayLeg("W104", 1, "START", "END", SourceRef("RTE_SEG.csv", 2), "F", 30.1, 120.0, 31.1, 121.0, "CN", "CN"),
+    ])
+
+    _insert_airway_waypoints(connection, model)
+    counts = _insert_airways(connection, model)
+
+    assert counts == {"airways_inserted": 1, "airway_legs_inserted": 1, "airway_rejections": []}
+    assert connection.execute("SELECT Waypoint1ID, Waypoint2ID FROM AirwayLegs").fetchall() == [(3, 4)]
+
+
+def test_airway_projection_uses_designated_source_phase_for_collocated_endpoint(tmp_path):
+    connection = sqlite3.connect(tmp_path / "airway-designated-source-phase.db3")
+    connection.executescript("""
+        CREATE TABLE Airways (ID INTEGER PRIMARY KEY, Ident TEXT NOT NULL);
+        CREATE TABLE AirwayLegs (ID INTEGER PRIMARY KEY, AirwayID INTEGER, Level TEXT, Waypoint1ID INTEGER, Waypoint2ID INTEGER, IsStart INTEGER NOT NULL, IsEnd INTEGER NOT NULL);
+        CREATE TABLE Waypoints (ID INTEGER PRIMARY KEY, Ident TEXT, Collocated INTEGER, Name TEXT, Latitude REAL, Longtitude REAL, NavaidID INTEGER);
+        CREATE TABLE WaypointLookup (Ident TEXT, Country TEXT, ID INTEGER);
+        CREATE TEMP TABLE _fenix_source_designated_waypoints (Ident TEXT, Latitude REAL, Longtitude REAL, WaypointID INTEGER);
+        INSERT INTO Waypoints VALUES (1, 'START', 0, 'BASE', 30.0, 120.0, NULL);
+        INSERT INTO Waypoints VALUES (2, 'END', 0, 'TERMINAL', 31.0, 121.0, NULL);
+        INSERT INTO Waypoints VALUES (3, 'END', 0, 'DESIGNATED', 31.0, 121.0, NULL);
+        INSERT INTO temp._fenix_source_designated_waypoints VALUES ('END', 31.0, 121.0, 3);
+    """)
+    model = NavModel(tmp_path, airway_legs=[
+        AirwayLeg("W105", 1, "START", "END", SourceRef("RTE_SEG.csv", 2), "F", 30.0, 120.0, 31.0, 121.0, "CN", "CN"),
+    ])
+
+    assert _insert_airways(connection, model) == {"airways_inserted": 1, "airway_legs_inserted": 1, "airway_rejections": []}
+    assert connection.execute("SELECT Waypoint1ID, Waypoint2ID FROM AirwayLegs").fetchall() == [(1, 3)]
+
+
 def test_merge_romanizes_source_backed_chinese_airport_name(tmp_path):
     db = sqlite3.connect(tmp_path / "test.db3")
     db.executescript("""

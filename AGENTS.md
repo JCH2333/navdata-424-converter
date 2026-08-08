@@ -1,5 +1,11 @@
 # Fenix 424 转换器交接状态
 
+## 2026-08-08 RTE_SEG.csv 指定点来源相位消歧
+
+- 适用范围：`RTE_SEG.csv` 航路端点与终端或指定点相位具有相同标识和精确坐标、因而在目标 `Waypoints` 中存在两个或更多候选的情况。`H127/P570` 证实其中一个同址候选由 `DESIGNATED_POINT.csv` 写入，另一个来自终端相位；仅按目标表查询会把具有结构化来源的端点误判为歧义。
+- 解决方式：航路端点先使用本次转换连接内 `_fenix_source_airway_waypoints` 的来源映射；若该点未新插入，再使用 `_fenix_source_designated_waypoints` 中同一 `(标识, 坐标)` 的指定点来源 ID。临时映射不进入输出 schema，不读取参考记录；缺少该唯一来源映射时，仍按精确/近距规则处理并拒绝歧义。
+- 自动化与验证：`test_airway_projection_prefers_its_source_coordinate_phase` 和 `test_airway_projection_uses_designated_source_phase_for_collocated_endpoint` 覆盖新插入及已存在指定点两条路径。基于既有 CSV/PDF 模型、未传入参考库生成 `output/candidate-2608-airway-designated-source-resolution`：航路/航段为 `10333/160825`（参考 `10338/163724`），本轮写入 473 条航路、1,789 条航段，拒绝由 162 降至 10；`integrity_check=ok`。只读方向签名为候选/参考/相同 `160825/163610/1252`，仍有来源链差异，不得按参考回填。候选 SHA-256 `ef49bb55225274f9e5b72691a3f6e4d181e6173b817eabec6e2062a88394f449` 不等于参考 `ca9cdd72b80d46b4c28e884bcd2ecf4b29bc54489704771d7908b32c6e3c510f`，严禁部署或发布。
+
 ## 2026-08-08 RTE_SEG.csv 航路点坐标相位
 
 - 适用范围：`RTE_SEG.csv` 中与已存在指定点同标识、但不在 0.02 海里内的航路端点。指定点、台站和航路段可合法共享标识而具有不同的已发布坐标，按标识抑制该端点会使整条航路无法投影。

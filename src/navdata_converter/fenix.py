@@ -909,10 +909,14 @@ def _resolve_airway_waypoint(
     ident: str,
     latitude: float | None,
     longitude: float | None,
+    source_waypoint_ids: dict[tuple[str, float, float], int] | None = None,
 ) -> int | None:
     """Resolve an RTE_SEG endpoint only at its printed coordinate."""
     if latitude is None or longitude is None:
         return None
+    source_waypoint_id = (source_waypoint_ids or {}).get((ident, round(latitude, 9), round(longitude, 9)))
+    if source_waypoint_id is not None:
+        return source_waypoint_id
     exact = [
         waypoint_id for waypoint_id, target_latitude, target_longitude in targets.get(ident, [])
         if math.isclose(latitude, target_latitude, abs_tol=1e-6)
@@ -936,6 +940,12 @@ def _insert_airway_waypoints(connection: sqlite3.Connection, model: NavModel) ->
         locations.setdefault(str(ident), _WaypointLocations([])).add(float(latitude), float(longitude))
     inserted: set[tuple[str, float, float]] = set()
     next_waypoint_id = _next_id(connection, "Waypoints")
+    connection.execute("DROP TABLE IF EXISTS temp._fenix_source_airway_waypoints")
+    connection.execute(
+        "CREATE TEMP TABLE _fenix_source_airway_waypoints "
+        "(Ident TEXT NOT NULL, Latitude REAL NOT NULL, Longtitude REAL NOT NULL, WaypointID INTEGER NOT NULL, "
+        "PRIMARY KEY (Ident, Latitude, Longtitude))"
+    )
     for leg in model.airway_legs:
         for ident, latitude, longitude, country in (
             (leg.start_ident, leg.start_latitude, leg.start_longitude, leg.start_country),
@@ -950,6 +960,10 @@ def _insert_airway_waypoints(connection: sqlite3.Connection, model: NavModel) ->
             _insert_waypoint(connection, next_waypoint_id, ident, ident, latitude, longitude, country)
             inserted.add(identity)
             point_locations.add(latitude, longitude)
+            connection.execute(
+                "INSERT INTO temp._fenix_source_airway_waypoints VALUES (?,?,?,?)",
+                (ident, latitude, longitude, next_waypoint_id),
+            )
             next_waypoint_id += 1
     return {"airway_waypoints_inserted": len(inserted)}
 
@@ -969,6 +983,23 @@ def _insert_airways(connection: sqlite3.Connection, model: NavModel) -> dict[str
     targets: dict[str, list[tuple[int, float, float]]] = {}
     for waypoint_id, ident, latitude, longitude in connection.execute("SELECT ID, Ident, Latitude, Longtitude FROM Waypoints"):
         targets.setdefault(str(ident), []).append((int(waypoint_id), float(latitude), float(longitude)))
+    source_waypoint_ids = {
+        (str(ident), round(float(latitude), 9), round(float(longitude), 9)): int(waypoint_id)
+        for ident, latitude, longitude, waypoint_id in connection.execute(
+            "SELECT Ident, Latitude, Longtitude, WaypointID FROM temp._fenix_source_airway_waypoints"
+        )
+    } if connection.execute(
+        "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='_fenix_source_airway_waypoints'"
+    ).fetchone() else {}
+    if connection.execute(
+        "SELECT 1 FROM sqlite_temp_master WHERE type='table' AND name='_fenix_source_designated_waypoints'"
+    ).fetchone():
+        source_waypoint_ids.update({
+            (str(ident), round(float(latitude), 9), round(float(longitude), 9)): int(waypoint_id)
+            for ident, latitude, longitude, waypoint_id in connection.execute(
+                "SELECT Ident, Latitude, Longtitude, WaypointID FROM temp._fenix_source_designated_waypoints"
+            )
+        })
     next_airway_id = _next_id(connection, "Airways")
     next_leg_id = _next_id(connection, "AirwayLegs")
     inserted_airways = 0
@@ -982,8 +1013,12 @@ def _insert_airways(connection: sqlite3.Connection, model: NavModel) -> dict[str
         forward: list[tuple[int, int]] = []
         backward: list[tuple[int, int]] = []
         for source_leg in ordered:
-            start_id = _resolve_airway_waypoint(targets, source_leg.start_ident, source_leg.start_latitude, source_leg.start_longitude)
-            end_id = _resolve_airway_waypoint(targets, source_leg.end_ident, source_leg.end_latitude, source_leg.end_longitude)
+            start_id = _resolve_airway_waypoint(
+                targets, source_leg.start_ident, source_leg.start_latitude, source_leg.start_longitude, source_waypoint_ids,
+            )
+            end_id = _resolve_airway_waypoint(
+                targets, source_leg.end_ident, source_leg.end_latitude, source_leg.end_longitude, source_waypoint_ids,
+            )
             if start_id is None or end_id is None:
                 rejected.append({
                     "airway": airway, "reason": "airway endpoint has no unique source-coordinate target waypoint",
