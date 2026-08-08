@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _terminal_waypoint_resolutions, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
+from navdata_converter.fenix import ConversionBlocked, _clear_china_airport_domain, _iap_sections, _insert_ilses, _insert_model, _insert_terminal_procedures, _insert_waypoints, _terminal_waypoint_resolutions, build_rejection_report, encode_frequency, fenix_procedure_name, fenix_procedure_type, fenix_terminal_identity, missing_navaids, project_ad219_ils, project_database_iap_leg, project_database_terminal_leg, resolve_terminal_waypoint, runway_threshold
 from navdata_converter.model import Airport, ChartTerminalLeg, Ils, Navaid, NavModel, ProcedureSegment, RejectedRecord, Runway, SourceRef, TerminalWaypoint, Waypoint
 
 
@@ -208,6 +208,22 @@ def test_projects_source_backed_iap_leg_with_approach_description():
         "course": None, "altitude": None, "waypoint_description": "E A", "speed_limit": None,
         "speed_limit_description": None, "center_id": None, "center_latitude": None, "center_longitude": None,
     }
+
+
+def test_iap_variant_uses_only_same_page_unlabelled_shared_sections(tmp_path):
+    source = SourceRef("Terminal/ZYYY/ZYYY-4Z01.pdf", page=1, sha256="hash")
+    other_page = SourceRef("Terminal/ZYYY/ZYYY-4Z02.pdf", page=1, sha256="other")
+    primary = ProcedureSegment("ZYYY", "R01-Y", "进近", "01", "", (), source)
+    transition = ProcedureSegment("ZYYY", "R01", "进近过渡", "01", "FIX", (), source)
+    missed = ProcedureSegment("ZYYY", "R01", "复飞", "01", "", (), source)
+    unrelated = ProcedureSegment("ZYYY", "R01", "复飞", "01", "", (), other_page)
+    groups = {("ZYYY", "R01-Y", "01"): [primary], ("ZYYY", "R01", "01"): [transition, missed, unrelated]}
+
+    transitions, main, missed_sections = _iap_sections(groups, "ZYYY", "R01-Y", "01", [primary])
+
+    assert transitions == [transition]
+    assert main == [primary]
+    assert missed_sections == [missed]
 
 
 def test_inserts_fully_resolved_source_sid_with_paired_extension_legs(tmp_path):

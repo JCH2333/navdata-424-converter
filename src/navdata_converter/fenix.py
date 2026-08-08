@@ -642,6 +642,39 @@ def _iap_chart_roles(model: NavModel, segment: ProcedureSegment) -> dict[str, se
     return roles
 
 
+def _iap_sections(
+    groups: dict[tuple[str, str, str], list[ProcedureSegment]],
+    airport: str,
+    label: str,
+    runway: str,
+    segments: list[ProcedureSegment],
+) -> tuple[list[ProcedureSegment], list[ProcedureSegment], list[ProcedureSegment]]:
+    """Return IAP sections, including same-page unlabelled shared sections.
+
+    CAAC coding tables may print variant main approaches as ``R01-Y`` and
+    ``R01-Z`` while their shared transition and missed sections remain under
+    the literal ``R01`` heading.  The association is allowed only on the same
+    source page, never by airport-wide name matching.
+    """
+    primary = [segment for segment in segments if segment.kind == "\u8fdb\u8fd1"]
+    transitions = [segment for segment in segments if segment.kind == "\u8fdb\u8fd1\u8fc7\u6e21"]
+    missed = [segment for segment in segments if segment.kind == "\u590d\u98de"]
+    if "-" not in label or len(primary) != 1:
+        return transitions, primary, missed
+    base_label = label.split("-", 1)[0]
+    source = primary[0].source
+    shared = groups.get((airport, base_label, runway), [])
+    transitions.extend(
+        segment for segment in shared
+        if segment.kind == "\u8fdb\u8fd1\u8fc7\u6e21" and segment.source.file == source.file and segment.source.page == source.page
+    )
+    missed.extend(
+        segment for segment in shared
+        if segment.kind == "\u590d\u98de" and segment.source.file == source.file and segment.source.page == source.page
+    )
+    return transitions, primary, missed
+
+
 def _insert_iap_procedures(connection: sqlite3.Connection, model: NavModel) -> dict[str, object]:
     """Insert source-complete IAP plans assembled from their printed sections.
 
@@ -667,9 +700,7 @@ def _insert_iap_procedures(connection: sqlite3.Connection, model: NavModel) -> d
         identity = (airport, "3", label, runway)
         if identity in existing:
             continue
-        primary = [segment for segment in segments if segment.kind == "\u8fdb\u8fd1"]
-        transitions = [segment for segment in segments if segment.kind == "\u8fdb\u8fd1\u8fc7\u6e21"]
-        missed = [segment for segment in segments if segment.kind == "\u590d\u98de"]
+        transitions, primary, missed = _iap_sections(groups, airport, label, runway, segments)
         source = primary[0].source if primary else segments[0].source
         try:
             if len(primary) != 1 or not primary[0].legs:
